@@ -4,16 +4,19 @@ require('dotenv').config();
 
 const authRoutes = require('./routes/auth.routes');
 const usersRoutes = require('./routes/users.routes');
+const reportesRoutes = require('./routes/reportes.routes');
 
 const app = express();
 
 // Middlewares globales
 app.use(cors());
 app.use(express.json());
+app.use('/uploads', express.static('uploads'));
 
 // Rutas
 app.use('/auth', authRoutes);
 app.use('/users', usersRoutes);
+app.use('/reportes', reportesRoutes);
 
 // Ruta de prueba
 app.get('/', (req, res) => {
