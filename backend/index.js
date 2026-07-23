@@ -6,6 +6,7 @@ const authRoutes = require('./routes/auth.routes');
 const usersRoutes = require('./routes/users.routes');
 const reportesRoutes = require('./routes/reportes.routes');
 const luminariasRoutes = require('./routes/luminarias.routes');
+const googleRoutes = require('./routes/google.routes');
 
 const app = express();
 
@@ -19,6 +20,7 @@ app.use('/auth', authRoutes);
 app.use('/users', usersRoutes);
 app.use('/reportes', reportesRoutes);
 app.use('/luminarias', luminariasRoutes);
+app.use('/auth', googleRoutes);
 
 // Ruta de prueba
 app.get('/', (req, res) => {
