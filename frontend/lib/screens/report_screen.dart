@@ -1,4 +1,7 @@
+import 'dart:convert';
 import 'package:flutter/material.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'package:http/http.dart' as http;
 import '../theme.dart';
 import '../widgets/map_placeholder.dart';
 
@@ -11,6 +14,10 @@ class ReportScreen extends StatefulWidget {
 
 class _ReportScreenState extends State<ReportScreen> {
   String _category = 'Robo';
+  final _descController = TextEditingController();
+  bool _loading = false;
+  String? _error;
+  String? _success;
 
   final _categories = const [
     ('Robo', Icons.warning_amber_outlined),
@@ -19,6 +26,62 @@ class _ReportScreenState extends State<ReportScreen> {
     ('Accidente vial', Icons.car_crash_outlined),
     ('Otro', Icons.more_horiz),
   ];
+
+  // Coordenadas de prueba — centro de Puebla
+  // Cuando se integre geolocator, estas serán dinámicas
+  final double _latitud = 19.0414;
+  final double _longitud = -98.2063;
+
+  Future<void> _enviarReporte() async {
+    if (_descController.text.trim().isEmpty) {
+      setState(() => _error = 'Agrega una descripción al reporte');
+      return;
+    }
+
+    setState(() { _loading = true; _error = null; _success = null; });
+
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final token = prefs.getString('token');
+
+      if (token == null) {
+        setState(() { _loading = false; _error = 'Debes iniciar sesión para reportar'; });
+        return;
+      }
+
+      final response = await http.post(
+        Uri.parse('http://10.0.2.2:3000/reportes'),
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer $token',
+        },
+        body: jsonEncode({
+          'categoria': _category,
+          'descripcion': _descController.text.trim(),
+          'latitud': _latitud,
+          'longitud': _longitud,
+        }),
+      );
+
+      setState(() => _loading = false);
+
+      if (response.statusCode == 201) {
+        setState(() {
+          _success = '¡Reporte enviado correctamente!';
+          _descController.clear();
+          _category = 'Robo';
+        });
+      } else {
+        final data = jsonDecode(response.body);
+        setState(() => _error = data['error'] ?? 'Error al enviar el reporte');
+      }
+    } catch (e) {
+      setState(() {
+        _loading = false;
+        _error = 'Error de conexión con el servidor';
+      });
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -59,6 +122,7 @@ class _ReportScreenState extends State<ReportScreen> {
           const Text('Descripción', style: TextStyle(color: AppColors.textSecondary)),
           const SizedBox(height: 8),
           TextField(
+            controller: _descController,
             maxLines: 4,
             style: const TextStyle(color: AppColors.textPrimary),
             decoration: const InputDecoration(
@@ -74,8 +138,7 @@ class _ReportScreenState extends State<ReportScreen> {
               minimumSize: const Size.fromHeight(52),
               foregroundColor: AppColors.textPrimary,
               side: const BorderSide(color: AppColors.surfaceLight),
-              shape:
-                  RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
             ),
           ),
           const SizedBox(height: 20),
@@ -85,14 +148,32 @@ class _ReportScreenState extends State<ReportScreen> {
             borderRadius: BorderRadius.circular(14),
             child: const SizedBox(height: 140, child: MapPlaceholder()),
           ),
+          if (_error != null) ...[
+            const SizedBox(height: 12),
+            Text(
+              _error!,
+              style: const TextStyle(color: Colors.red, fontSize: 13),
+              textAlign: TextAlign.center,
+            ),
+          ],
+          if (_success != null) ...[
+            const SizedBox(height: 12),
+            Text(
+              _success!,
+              style: const TextStyle(color: Colors.green, fontSize: 13),
+              textAlign: TextAlign.center,
+            ),
+          ],
           const SizedBox(height: 28),
           ElevatedButton(
-            onPressed: () {
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text('Reporte enviado (demo)')),
-              );
-            },
-            child: const Text('Enviar reporte'),
+            onPressed: _loading ? null : _enviarReporte,
+            child: _loading
+                ? const SizedBox(
+                    height: 20,
+                    width: 20,
+                    child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                  )
+                : const Text('Enviar reporte'),
           ),
         ],
       ),

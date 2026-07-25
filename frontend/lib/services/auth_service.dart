@@ -4,7 +4,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 class AuthService {
   // Cambia esta IP por la de tu computadora cuando pruebes en emulador
-  static const String baseUrl = 'http://10.0.2.2:3000';
+  static const String baseUrl = 'http://localhost:3000';
 
   // Login con email y contraseña
   static Future<Map<String, dynamic>> login(String email, String password) async {
