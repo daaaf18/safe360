@@ -50,7 +50,7 @@ class _ReportScreenState extends State<ReportScreen> {
       }
 
       final response = await http.post(
-        Uri.parse('http://10.0.2.2:3000/reportes'),
+        Uri.parse('http://localhost:3000/reportes'),
         headers: {
           'Content-Type': 'application/json',
           'Authorization': 'Bearer $token',

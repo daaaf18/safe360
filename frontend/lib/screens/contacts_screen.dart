@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:http/http.dart' as http;
+import 'package:flutter_contacts/flutter_contacts.dart';
 import '../theme.dart';
 
 class ContactsScreen extends StatefulWidget {
@@ -14,7 +15,7 @@ class ContactsScreen extends StatefulWidget {
 class _ContactsScreenState extends State<ContactsScreen> {
   static const String baseUrl = 'http://10.0.2.2:3000';
 
-  List<dynamic> _contactos = [];
+  List<dynamic> _contactosConfianza = [];
   bool _loading = true;
   int? _userId;
   String? _token;
@@ -46,7 +47,7 @@ class _ContactsScreenState extends State<ContactsScreen> {
 
       if (response.statusCode == 200) {
         setState(() {
-          _contactos = jsonDecode(response.body);
+          _contactosConfianza = jsonDecode(response.body);
           _loading = false;
         });
       } else {
@@ -76,7 +77,7 @@ class _ContactsScreenState extends State<ContactsScreen> {
         _cargarContactos();
       }
     } catch (e) {
-      // Error silencioso por ahora
+      // Error silencioso
     }
   }
 
@@ -92,11 +93,27 @@ class _ContactsScreenState extends State<ContactsScreen> {
     }
   }
 
-  void _mostrarFormulario() {
-    final nombreCtrl = TextEditingController();
-    final telefonoCtrl = TextEditingController();
-    final emailCtrl = TextEditingController();
+  Future<void> _seleccionarDeContactos() async {
+    // Pedir permiso
+    final permiso = await FlutterContacts.requestPermission(readonly: true);
+    if (!permiso) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Permiso de contactos denegado')),
+        );
+      }
+      return;
+    }
 
+    // Obtener contactos del dispositivo
+    final contactos = await FlutterContacts.getContacts(
+      withProperties: true,
+      withPhoto: false,
+    );
+
+    if (!mounted) return;
+
+    // Mostrar lista de contactos del celular
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
@@ -104,55 +121,72 @@ class _ContactsScreenState extends State<ContactsScreen> {
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
-      builder: (ctx) => Padding(
-        padding: EdgeInsets.fromLTRB(
-          20, 20, 20, MediaQuery.of(ctx).viewInsets.bottom + 20,
-        ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.stretch,
+      builder: (ctx) => DraggableScrollableSheet(
+        expand: false,
+        initialChildSize: 0.7,
+        maxChildSize: 0.9,
+        builder: (_, controller) => Column(
           children: [
-            const Text(
-              'Agregar contacto',
-              style: TextStyle(
-                color: AppColors.textPrimary,
-                fontSize: 16,
-                fontWeight: FontWeight.bold,
+            const Padding(
+              padding: EdgeInsets.all(16),
+              child: Text(
+                'Selecciona un contacto',
+                style: TextStyle(
+                  color: AppColors.textPrimary,
+                  fontSize: 16,
+                  fontWeight: FontWeight.bold,
+                ),
               ),
             ),
-            const SizedBox(height: 16),
-            TextField(
-              controller: nombreCtrl,
-              style: const TextStyle(color: AppColors.textPrimary),
-              decoration: const InputDecoration(hintText: 'Nombre'),
-            ),
-            const SizedBox(height: 12),
-            TextField(
-              controller: telefonoCtrl,
-              keyboardType: TextInputType.phone,
-              style: const TextStyle(color: AppColors.textPrimary),
-              decoration: const InputDecoration(hintText: 'Teléfono'),
-            ),
-            const SizedBox(height: 12),
-            TextField(
-              controller: emailCtrl,
-              keyboardType: TextInputType.emailAddress,
-              style: const TextStyle(color: AppColors.textPrimary),
-              decoration: const InputDecoration(hintText: 'Email (opcional)'),
-            ),
-            const SizedBox(height: 20),
-            ElevatedButton(
-              onPressed: () {
-                if (nombreCtrl.text.isNotEmpty && telefonoCtrl.text.isNotEmpty) {
-                  _agregarContacto(
-                    nombreCtrl.text.trim(),
-                    telefonoCtrl.text.trim(),
-                    emailCtrl.text.trim(),
-                  );
-                  Navigator.pop(ctx);
-                }
-              },
-              child: const Text('Guardar contacto'),
+            Expanded(
+              child: contactos.isEmpty
+                  ? const Center(
+                      child: Text(
+                        'No hay contactos en tu dispositivo',
+                        style: TextStyle(color: AppColors.textSecondary),
+                      ),
+                    )
+                  : ListView.builder(
+                      controller: controller,
+                      itemCount: contactos.length,
+                      itemBuilder: (_, i) {
+                        final c = contactos[i];
+                        final telefono = c.phones.isNotEmpty
+                            ? c.phones.first.number
+                            : '';
+                        final email = c.emails.isNotEmpty
+                            ? c.emails.first.address
+                            : '';
+
+                        return ListTile(
+                          leading: const CircleAvatar(
+                            backgroundColor: AppColors.surface,
+                            child: Icon(Icons.person, color: AppColors.textSecondary),
+                          ),
+                          title: Text(
+                            c.displayName,
+                            style: const TextStyle(color: AppColors.textPrimary),
+                          ),
+                          subtitle: Text(
+                            telefono,
+                            style: const TextStyle(
+                              color: AppColors.textSecondary,
+                              fontSize: 12,
+                            ),
+                          ),
+                          onTap: telefono.isNotEmpty
+                              ? () {
+                                  Navigator.pop(ctx);
+                                  _agregarContacto(
+                                    c.displayName,
+                                    telefono,
+                                    email,
+                                  );
+                                }
+                              : null,
+                        );
+                      },
+                    ),
             ),
           ],
         ),
@@ -164,26 +198,27 @@ class _ContactsScreenState extends State<ContactsScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(title: const Text('Contactos de confianza')),
-      floatingActionButton: FloatingActionButton(
+      floatingActionButton: FloatingActionButton.extended(
         backgroundColor: AppColors.safe,
-        onPressed: _mostrarFormulario,
-        child: const Icon(Icons.add, color: Colors.white),
+        onPressed: _seleccionarDeContactos,
+        icon: const Icon(Icons.contacts, color: Colors.white),
+        label: const Text('Agregar', style: TextStyle(color: Colors.white)),
       ),
       body: _loading
           ? const Center(child: CircularProgressIndicator())
-          : _contactos.isEmpty
+          : _contactosConfianza.isEmpty
               ? const Center(
                   child: Text(
-                    'No tienes contactos de confianza.\nAgrega uno con el botón +',
+                    'No tienes contactos de confianza.\nToca "Agregar" para seleccionar de tus contactos.',
                     textAlign: TextAlign.center,
                     style: TextStyle(color: AppColors.textSecondary),
                   ),
                 )
               : ListView.builder(
                   padding: const EdgeInsets.all(16),
-                  itemCount: _contactos.length,
+                  itemCount: _contactosConfianza.length,
                   itemBuilder: (context, i) {
-                    final c = _contactos[i];
+                    final c = _contactosConfianza[i];
                     return Card(
                       child: ListTile(
                         leading: const CircleAvatar(
@@ -201,7 +236,8 @@ class _ContactsScreenState extends State<ContactsScreen> {
                           ),
                         ),
                         trailing: IconButton(
-                          icon: const Icon(Icons.delete_outline, color: AppColors.danger),
+                          icon: const Icon(Icons.delete_outline,
+                              color: AppColors.danger),
                           onPressed: () => _eliminarContacto(c['id']),
                         ),
                       ),
