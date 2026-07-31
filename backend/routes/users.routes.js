@@ -1,6 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const usersController = require('../controllers/users.controller');
+const { getStats } = require('../controllers/stats.controller');
 const { verificarToken } = require('../middleware/auth.middleware');
 
 // GET /users/:id — Ver perfil de usuario
@@ -14,6 +15,9 @@ router.put('/:id/ubicacion', verificarToken, usersController.actualizarUbicacion
 
 // GET /users/:id/contactos — Ver contactos de confianza
 router.get('/:id/contactos', verificarToken, usersController.getContactos);
+
+// GET /users/:id/stats — Estadísticas y TrustScore personal
+router.get('/:id/stats', verificarToken, getStats);
 
 // POST /users/:id/contactos — Agregar contacto de confianza
 router.post('/:id/contactos', verificarToken, usersController.agregarContacto);
