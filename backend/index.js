@@ -11,6 +11,7 @@ const googleRoutes = require('./routes/google.routes');
 const sosRoutes = require('./routes/sos.routes');
 const rutasRoutes = require('./routes/rutas.routes');
 const zonasRoutes = require('./routes/zonas.routes');
+const chatyRoutes = require('./routes/chaty.routes');
 
 const app = express();
 
@@ -28,6 +29,7 @@ app.use('/auth', googleRoutes);
 app.use('/sos', sosRoutes);
 app.use('/rutas', rutasRoutes);
 app.use('/zonas', zonasRoutes);
+app.use('/chaty', chatyRoutes);
 
 // Ruta de prueba
 app.get('/', (req, res) => {
