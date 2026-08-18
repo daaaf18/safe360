@@ -9,6 +9,7 @@ const reportesRoutes = require('./routes/reportes.routes');
 const luminariasRoutes = require('./routes/luminarias.routes');
 const googleRoutes = require('./routes/google.routes');
 const sosRoutes = require('./routes/sos.routes');
+const rutasRoutes = require('./routes/rutas.routes');
 
 const app = express();
 
@@ -24,6 +25,7 @@ app.use('/reportes', reportesRoutes);
 app.use('/luminarias', luminariasRoutes);
 app.use('/auth', googleRoutes);
 app.use('/sos', sosRoutes);
+app.use('/rutas', rutasRoutes);
 
 // Ruta de prueba
 app.get('/', (req, res) => {
