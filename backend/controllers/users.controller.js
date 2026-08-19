@@ -139,6 +139,74 @@ const eliminarContacto = async (req, res) => {
   }
 };
 
+// GET /usuarios/cercanos?lat=&lon=&radio=
+const getCercanos = async (req, res) => {
+  const { lat, lon, radio = 300 } = req.query;
+  const usuario_id = req.usuario.id;
+
+  if (!lat || !lon) {
+    return res.status(400).json({ error: 'Se requieren lat y lon' });
+  }
+
+  try {
+    // Usuarios activos en los últimos 5 minutos, excluyendo al solicitante
+    // Posición aproximada — redondeada a ~100m para privacidad
+    const resultado = await pool.query(
+      `SELECT 
+        COUNT(*) as total,
+        ST_X(ST_SnapToGrid(ubicacion_publica, 0.001)) as lon_aprox,
+        ST_Y(ST_SnapToGrid(ubicacion_publica, 0.001)) as lat_aprox
+       FROM usuarios
+       WHERE id != $1
+       AND ubicacion_publica IS NOT NULL
+       AND ultimo_ping > NOW() - INTERVAL '5 minutes'
+       AND ST_DWithin(
+         ubicacion_publica::geography,
+         ST_SetSRID(ST_MakePoint($2, $3), 4326)::geography,
+         $4
+       )
+       GROUP BY ST_SnapToGrid(ubicacion_publica, 0.001)`,
+      [usuario_id, lon, lat, radio]
+    );
+
+    res.json({
+      total: resultado.rows.reduce((acc, r) => acc + parseInt(r.total), 0),
+      zonas: resultado.rows.map(r => ({
+        lat: r.lat_aprox,
+        lon: r.lon_aprox,
+        cantidad: parseInt(r.total)
+      }))
+    });
+
+  } catch (error) {
+    console.error('Error en getCercanos:', error.message);
+    res.status(500).json({ error: 'Error interno del servidor' });
+  }
+};
+
+// PUT /users/:id/ping — Actualizar ping y ubicación pública aproximada
+const actualizarPing = async (req, res) => {
+  const { id } = req.params;
+  const { latitud, longitud } = req.body;
+
+  try {
+    await pool.query(
+      `UPDATE usuarios SET 
+        ultimo_ping = NOW(),
+        ubicacion_publica = ST_SnapToGrid(
+          ST_SetSRID(ST_MakePoint($1, $2), 4326), 0.001
+        )
+       WHERE id = $3`,
+      [longitud, latitud, id]
+    );
+
+    res.json({ message: 'Ping actualizado' });
+  } catch (error) {
+    console.error('Error en actualizarPing:', error.message);
+    res.status(500).json({ error: 'Error interno del servidor' });
+  }
+};
+
 module.exports = {
   getPerfil,
   editarPerfil,
@@ -146,5 +214,7 @@ module.exports = {
   getContactos,
   agregarContacto,
   editarContacto,
-  eliminarContacto
+  eliminarContacto,
+  getCercanos,
+  actualizarPing
 };
