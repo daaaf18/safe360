@@ -2,10 +2,13 @@ const express = require('express');
 const cors = require('cors');
 require('dotenv').config();
 
+const { iniciarWhatsApp } = require('./services/whatsapp.service');
 const authRoutes = require('./routes/auth.routes');
 const usersRoutes = require('./routes/users.routes');
 const reportesRoutes = require('./routes/reportes.routes');
 const luminariasRoutes = require('./routes/luminarias.routes');
+const googleRoutes = require('./routes/google.routes');
+const sosRoutes = require('./routes/sos.routes');
 
 const app = express();
 
@@ -19,6 +22,8 @@ app.use('/auth', authRoutes);
 app.use('/users', usersRoutes);
 app.use('/reportes', reportesRoutes);
 app.use('/luminarias', luminariasRoutes);
+app.use('/auth', googleRoutes);
+app.use('/sos', sosRoutes);
 
 // Ruta de prueba
 app.get('/', (req, res) => {
@@ -29,4 +34,5 @@ const PORT = process.env.PORT || 3000;
 
 app.listen(PORT, () => {
   console.log(`Servidor corriendo en http://localhost:${PORT}`);
+  iniciarWhatsApp();
 });

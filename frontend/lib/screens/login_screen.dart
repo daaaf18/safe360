@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:google_sign_in/google_sign_in.dart';
 import '../theme.dart';
+import '../services/auth_service.dart';
 import 'register_screen.dart';
 import 'main_navigation.dart';
 
@@ -14,11 +16,67 @@ class _LoginScreenState extends State<LoginScreen> {
   final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
   bool _obscure = true;
+  bool _loading = false;
+  String? _error;
+
+  final GoogleSignIn _googleSignIn = GoogleSignIn(
+    clientId: '27094083724-l06fgnb73ikr6mppobm2gd42f6tvrnk2.apps.googleusercontent.com',
+  );
 
   void _goHome() {
     Navigator.of(context).pushReplacement(
       MaterialPageRoute(builder: (_) => const MainNavigation()),
     );
+  }
+
+  Future<void> _login() async {
+    setState(() {
+      _loading = true;
+      _error = null;
+    });
+
+    final resultado = await AuthService.login(
+      _emailController.text.trim(),
+      _passwordController.text,
+    );
+
+    setState(() => _loading = false);
+
+    if (resultado['success']) {
+      _goHome();
+    } else {
+      setState(() => _error = resultado['error']);
+    }
+  }
+
+  Future<void> _loginConGoogle() async {
+    setState(() { _loading = true; _error = null; });
+
+    try {
+      final account = await _googleSignIn.signIn();
+      if (account == null) {
+        setState(() => _loading = false);
+        return;
+      }
+
+      final auth = await account.authentication;
+      final idToken = auth.idToken;
+
+      final resultado = await AuthService.loginConGoogle(idToken!);
+
+      setState(() => _loading = false);
+
+      if (resultado['success']) {
+        _goHome();
+      } else {
+        setState(() => _error = resultado['error']);
+      }
+    } catch (e) {
+      setState(() {
+        _loading = false;
+        _error = 'Error al iniciar sesión con Google';
+      });
+    }
   }
 
   @override
@@ -91,6 +149,14 @@ class _LoginScreenState extends State<LoginScreen> {
                   ),
                 ),
               ),
+              if (_error != null) ...[
+                const SizedBox(height: 10),
+                Text(
+                  _error!,
+                  style: const TextStyle(color: Colors.red, fontSize: 13),
+                  textAlign: TextAlign.center,
+                ),
+              ],
               Align(
                 alignment: Alignment.centerRight,
                 child: TextButton(
@@ -101,8 +167,30 @@ class _LoginScreenState extends State<LoginScreen> {
               ),
               const SizedBox(height: 12),
               ElevatedButton(
-                onPressed: _goHome,
-                child: const Text('Iniciar sesión'),
+                onPressed: _loading ? null : _login,
+                child: _loading
+                    ? const SizedBox(
+                        height: 20,
+                        width: 20,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          color: Colors.white,
+                        ),
+                      )
+                    : const Text('Iniciar sesión'),
+              ),
+              const SizedBox(height: 12),
+              OutlinedButton.icon(
+                onPressed: _loading ? null : _loginConGoogle,
+                icon: const Icon(Icons.g_mobiledata, size: 24),
+                label: const Text('Continuar con Google'),
+                style: OutlinedButton.styleFrom(
+                  minimumSize: const Size.fromHeight(52),
+                  foregroundColor: AppColors.textPrimary,
+                  side: const BorderSide(color: AppColors.surfaceLight),
+                  shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(14)),
+                ),
               ),
               const SizedBox(height: 12),
               OutlinedButton(
