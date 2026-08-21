@@ -34,7 +34,7 @@ SELECT
 FROM reportes r
 JOIN usuarios u ON r.usuario_id = u.id
 WHERE r.estado = 'pendiente'
-ORDER BY r.created_at DESC;
+ORDER BY r.id DESC;
 
 -- 3. Función para calcular TrustScore de un reporte
 -- Pondera: fiabilidad del usuario (30%) + votos (50%) + Open Data (20%)

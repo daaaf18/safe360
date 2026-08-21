@@ -1,6 +1,5 @@
 -- SEMANA 3: Consultas Geoespaciales PostGIS
 
-
 -- 1. Datos de prueba (Usuarios y Reportes)
 INSERT INTO usuarios (id, nombre, email, password_hash, historial_confianza)
 VALUES 
