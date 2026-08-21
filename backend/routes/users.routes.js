@@ -28,10 +28,4 @@ router.put('/:id/contactos/:contactoId', verificarToken, usersController.editarC
 // DELETE /users/:id/contactos/:contactoId — Eliminar contacto
 router.delete('/:id/contactos/:contactoId', verificarToken, usersController.eliminarContacto);
 
-// GET /usuarios/cercanos — Usuarios activos cercanos (anónimos)
-router.get('/cercanos', verificarToken, usersController.getCercanos);
-
-// PUT /users/:id/ping — Actualizar ubicación pública y ping
-router.put('/:id/ping', verificarToken, usersController.actualizarPing);
-
 module.exports = router;
