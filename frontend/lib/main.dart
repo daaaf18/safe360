@@ -1,8 +1,24 @@
 import 'package:flutter/material.dart';
+import 'package:mapbox_maps_flutter/mapbox_maps_flutter.dart';
 import 'theme.dart';
 import 'screens/login_screen.dart';
 
 void main() {
+  WidgetsFlutterBinding.ensureInitialized();
+
+  // El token público de Mapbox se pasa en tiempo de build/run con:
+  //   flutter run --dart-define-from-file=env.json
+  // Ver env.example.json para el formato esperado.
+  const accessToken = String.fromEnvironment('MAPBOX_ACCESS_TOKEN');
+  if (accessToken.isNotEmpty) {
+    MapboxOptions.setAccessToken(accessToken);
+  } else {
+    debugPrint(
+      '⚠️  MAPBOX_ACCESS_TOKEN no configurado. El mapa no va a cargar tiles. '
+      'Corré la app con --dart-define-from-file=env.json',
+    );
+  }
+
   runApp(const Safe360App());
 }
 

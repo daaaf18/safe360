@@ -1,8 +1,7 @@
 # Safe360 - Frontend (Flutter)
 
-Plantilla inicial del frontend con las 8 pantallas principales, navegación
-funcional y datos de ejemplo (mock). Aún no incluye Mapbox real ni conexión
-al backend — eso se integra después.
+Frontend con las 9 pantallas principales, navegación funcional, conexión
+real al backend (auth, reportes, rutas) y mapa real de Mapbox.
 
 ## Pantallas incluidas
 1. Login (`lib/screens/login_screen.dart`)
@@ -17,27 +16,28 @@ al backend — eso se integra después.
 
 ## Cómo correrlo
 1. Necesitas el Flutter SDK instalado (https://docs.flutter.dev/get-started/install)
-2. Dentro de esta carpeta:
+2. Conseguí un token público de Mapbox (gratis) en
+   https://console.mapbox.com/account/access-tokens/
+3. Dentro de esta carpeta (`frontend/`), copiá `env.example.json` a
+   `env.json` y completá tu token:
+   ```
+   cp env.example.json env.json
+   ```
+4. Instalá dependencias y corré la app:
    ```
    flutter pub get
-   flutter run
+   flutter run --dart-define-from-file=env.json
    ```
-
-## Cómo integrarlo al repo `safe360`
-1. Copia todo el contenido de esta carpeta dentro de `frontend/` en el repo
-2. Desde la raíz del repo:
-   ```
-   git checkout -b frontend-flutter
-   git add frontend/
-   git commit -m "Estructura inicial del frontend en Flutter"
-   git push origin frontend-flutter
-   ```
-3. Abre un Pull Request de `frontend-flutter` → `main` para revisión del equipo
+   `env.json` está en `.gitignore`, nunca se sube al repo — cada dev usa
+   el suyo.
 
 ## Próximos pasos pendientes
-- Reemplazar `lib/widgets/map_placeholder.dart` por la integración real de
-  Mapbox (paquete `mapbox_maps_flutter`) usando los datos de heatmap del
-  backend (PostGIS)
-- Conectar los formularios (login, registro, reportar) a los endpoints reales
-- Conectar Chaty a un servicio de voz/NLP real
+- Conectar el mapa a los datos reales de heatmap/luminarias del backend
+  (`GET /luminarias`), no solo a `reportes`.
+- Reemplazar la línea recta de "Ruta segura" por geometría real de ruta
+  cuando el backend la exponga (ver `TODO(Jorge)` en
+  `lib/widgets/safe360_map.dart`).
+- Conectar Chaty (ya tiene backend real en `POST /chaty`) a la UI y
+  agregar speech-to-text al botón del micro.
 - Agregar manejo de estado (Provider, Riverpod o Bloc) en vez de datos mock
+  donde todavía queden.
