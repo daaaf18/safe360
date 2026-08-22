@@ -3,9 +3,8 @@ const { notificarRutasAfectadas } = require('../services/notificaciones.service'
 
 // POST /reportes — Crear reporte
 const crearReporte = async (req, res) => {
-  const { categoria, descripcion, latitud, longitud } = req.body;
+  const { categoria, descripcion, latitud, longitud, evidencia_url = null } = req.body;
   const usuario_id = req.usuario.id;
-  const evidencia_url = req.file ? `/uploads/${req.file.filename}` : null;
 
   try {
     const resultado = await pool.query(
