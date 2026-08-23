@@ -1,10 +1,10 @@
 const pool = require('../models/db');
+const { notificarRutasAfectadas } = require('../services/notificaciones.service');
 
 // POST /reportes — Crear reporte
 const crearReporte = async (req, res) => {
-  const { categoria, descripcion, latitud, longitud } = req.body;
+  const { categoria, descripcion, latitud, longitud, evidencia_url = null } = req.body;
   const usuario_id = req.usuario.id;
-  const evidencia_url = req.file ? `/uploads/${req.file.filename}` : null;
 
   try {
     const resultado = await pool.query(
@@ -15,6 +15,14 @@ const crearReporte = async (req, res) => {
     );
 
     res.status(201).json(resultado.rows[0]);
+
+    // Notificar rutas activas afectadas (en background, no bloquea la respuesta)
+    notificarRutasAfectadas({
+      categoria,
+      latitud,
+      longitud,
+    });
+
   } catch (error) {
     console.error('Error en crearReporte:', error.message);
     res.status(500).json({ error: 'Error interno del servidor' });
@@ -31,13 +39,11 @@ const getReportes = async (req, res) => {
                  trust_score, estado, created_at FROM reportes WHERE 1=1`;
     const params = [];
 
-    // Filtrar por categoría
     if (categoria) {
       params.push(categoria);
       query += ` AND categoria = $${params.length}`;
     }
 
-    // Filtrar por zona (radio en metros)
     if (latitud && longitud && radio) {
       params.push(longitud, latitud, radio);
       query += ` AND ST_DWithin(

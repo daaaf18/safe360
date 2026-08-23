@@ -1,12 +1,44 @@
 import 'package:flutter/material.dart';
 import '../theme.dart';
 
-/// Placeholder visual del mapa con heatmap simulado.
+/// Placeholder visual del mapa con heatmap.
+/// Muestra reportes reales si se proporcionan, o blobs simulados si no hay datos.
 /// TODO: reemplazar por mapbox_maps_flutter cuando se integre el SDK real.
 class MapPlaceholder extends StatelessWidget {
   final bool showRoute;
+  final List<dynamic> reportes;
 
-  const MapPlaceholder({super.key, this.showRoute = false});
+  const MapPlaceholder({
+    super.key,
+    this.showRoute = false,
+    this.reportes = const [],
+  });
+
+  Color _colorCategoria(String categoria) {
+    switch (categoria.toLowerCase()) {
+      case 'robo':
+      case 'acoso':
+        return AppColors.danger;
+      case 'poca iluminación':
+      case 'accidente vial':
+        return AppColors.warning;
+      default:
+        return AppColors.warning;
+    }
+  }
+
+  // Convierte índice de reporte a posición relativa en la pantalla
+  // Cuando se integre Mapbox, esto se reemplaza por coordenadas reales
+  Map<String, double> _posicionSimulada(int index, int total) {
+    final positions = [
+      {'top': 80.0, 'left': 40.0},
+      {'top': 220.0, 'right': 30.0},
+      {'bottom': 140.0, 'left': 90.0},
+      {'top': 150.0, 'left': 150.0},
+      {'bottom': 80.0, 'right': 60.0},
+    ];
+    return positions[index % positions.length];
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -14,22 +46,48 @@ class MapPlaceholder extends StatelessWidget {
       fit: StackFit.expand,
       children: [
         Container(color: const Color(0xFF1A2A2E)),
-        // Manchas de "heatmap" simuladas
-        Positioned(
-          top: 80,
-          left: 40,
-          child: _blob(AppColors.safe, 120),
-        ),
-        Positioned(
-          top: 220,
-          right: 30,
-          child: _blob(AppColors.warning, 90),
-        ),
-        Positioned(
-          bottom: 140,
-          left: 90,
-          child: _blob(AppColors.danger, 70),
-        ),
+
+        // Blobs del heatmap — reales si hay reportes, simulados si no
+        if (reportes.isEmpty) ...[
+          Positioned(
+            top: 80,
+            left: 40,
+            child: _blob(AppColors.safe, 120),
+          ),
+          Positioned(
+            top: 220,
+            right: 30,
+            child: _blob(AppColors.warning, 90),
+          ),
+          Positioned(
+            bottom: 140,
+            left: 90,
+            child: _blob(AppColors.danger, 70),
+          ),
+        ] else ...[
+          ...List.generate(
+            reportes.length > 5 ? 5 : reportes.length,
+            (i) {
+              final reporte = reportes[i];
+              final color = _colorCategoria(reporte['categoria'] ?? '');
+              final pos = _posicionSimulada(i, reportes.length);
+              final size = reporte['estado'] == 'verificado' ? 100.0 : 70.0;
+
+              Widget blob = _blob(color, size);
+
+              if (pos.containsKey('right') && pos.containsKey('bottom')) {
+                return Positioned(bottom: pos['bottom'], right: pos['right'], child: blob);
+              } else if (pos.containsKey('right')) {
+                return Positioned(top: pos['top'], right: pos['right'], child: blob);
+              } else if (pos.containsKey('bottom')) {
+                return Positioned(bottom: pos['bottom'], left: pos['left'], child: blob);
+              } else {
+                return Positioned(top: pos['top'], left: pos['left'], child: blob);
+              }
+            },
+          ),
+        ],
+
         if (showRoute)
           Positioned(
             top: 150,
@@ -38,15 +96,26 @@ class MapPlaceholder extends StatelessWidget {
             bottom: 200,
             child: CustomPaint(painter: _RoutePainter()),
           ),
+
         Center(
-          child: Icon(Icons.my_location, color: Colors.white.withOpacity(0.9), size: 28),
+          child: Icon(
+            Icons.my_location,
+            color: Colors.white.withOpacity(0.9),
+            size: 28,
+          ),
         ),
+
         Positioned(
           bottom: 12,
           right: 12,
           child: Text(
-            'Vista previa del mapa',
-            style: TextStyle(color: Colors.white.withOpacity(0.4), fontSize: 11),
+            reportes.isEmpty
+                ? 'Vista previa del mapa'
+                : '${reportes.length} reporte${reportes.length != 1 ? 's' : ''} en la zona',
+            style: TextStyle(
+              color: Colors.white.withOpacity(0.4),
+              fontSize: 11,
+            ),
           ),
         ),
       ],
@@ -60,7 +129,9 @@ class MapPlaceholder extends StatelessWidget {
       decoration: BoxDecoration(
         shape: BoxShape.circle,
         color: color.withOpacity(0.35),
-        boxShadow: [BoxShadow(color: color.withOpacity(0.25), blurRadius: 40)],
+        boxShadow: [
+          BoxShadow(color: color.withOpacity(0.25), blurRadius: 40),
+        ],
       ),
     );
   }

@@ -208,8 +208,7 @@ class _SosScreenState extends State<SosScreen> {
                                       color: AppColors.textSecondary,
                                       fontSize: 12),
                                 ),
-                                trailing: const Icon(Icons.whatsapp,
-                                    color: AppColors.safe, size: 20),
+                                trailing: const Icon(Icons.chat, color: AppColors.safe, size: 20),
                           ),
                         ))
                         .toList(),

@@ -20,6 +20,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
   String _nombre = '';
   String _email = '';
   List<dynamic> _reportes = [];
+  Map<String, dynamic>? _stats;
   bool _loading = true;
 
   @override
@@ -47,21 +48,22 @@ class _ProfileScreenState extends State<ProfileScreen> {
         _email = usuario['email'] ?? '';
       });
 
-      // Cargar reportes del usuario
-      final response = await http.get(
-        Uri.parse('$baseUrl/reportes'),
-        headers: {'Authorization': 'Bearer $token'},
-      );
+      // Cargar reportes y estadísticas en paralelo
+      final responses = await Future.wait([
+        http.get(Uri.parse('$baseUrl/reportes'), headers: {'Authorization': 'Bearer $token'}),
+        http.get(Uri.parse('$baseUrl/users/$userId/stats'), headers: {'Authorization': 'Bearer $token'}),
+      ]);
 
-      if (response.statusCode == 200) {
-        final data = jsonDecode(response.body);
-        setState(() {
-          _reportes = data is List ? data : (data['reportes'] ?? []);
-          _loading = false;
-        });
-      } else {
-        setState(() => _loading = false);
+      if (responses[0].statusCode == 200) {
+        final data = jsonDecode(responses[0].body);
+        setState(() => _reportes = data is List ? data : (data['reportes'] ?? []));
       }
+
+      if (responses[1].statusCode == 200) {
+        setState(() => _stats = jsonDecode(responses[1].body));
+      }
+
+      setState(() => _loading = false);
     } catch (e) {
       setState(() => _loading = false);
     }
@@ -94,8 +96,47 @@ class _ProfileScreenState extends State<ProfileScreen> {
     }
   }
 
+  Widget _statCard(String valor, String etiqueta, Color color) {
+    return Expanded(
+      child: Container(
+        padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 8),
+        decoration: BoxDecoration(
+          color: color.withOpacity(0.1),
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: color.withOpacity(0.3)),
+        ),
+        child: Column(
+          children: [
+            Text(
+              valor,
+              style: TextStyle(
+                color: color,
+                fontSize: 22,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+            const SizedBox(height: 4),
+            Text(
+              etiqueta,
+              textAlign: TextAlign.center,
+              style: const TextStyle(color: AppColors.textSecondary, fontSize: 11),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
+    final trustScore = _stats?['historial_confianza'] ?? 1.0;
+    final nivelConfianza = _stats?['nivel_confianza'] ?? 'Alto';
+    final colorTrust = nivelConfianza == 'Alto'
+        ? AppColors.safe
+        : nivelConfianza == 'Medio'
+            ? AppColors.warning
+            : AppColors.danger;
+
     return Scaffold(
       appBar: AppBar(title: const Text('Perfil')),
       body: _loading
@@ -103,6 +144,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
           : ListView(
               padding: const EdgeInsets.all(20),
               children: [
+                // Avatar y datos
                 const CircleAvatar(
                   radius: 40,
                   backgroundColor: AppColors.surface,
@@ -126,6 +168,114 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   ),
                 ),
                 const SizedBox(height: 20),
+
+                // TrustScore personal
+                Container(
+                  padding: const EdgeInsets.all(16),
+                  decoration: BoxDecoration(
+                    color: colorTrust.withOpacity(0.1),
+                    borderRadius: BorderRadius.circular(14),
+                    border: Border.all(color: colorTrust.withOpacity(0.4)),
+                  ),
+                  child: Row(
+                    children: [
+                      CircleAvatar(
+                        backgroundColor: colorTrust,
+                        child: const Icon(Icons.shield, color: Colors.white, size: 20),
+                      ),
+                      const SizedBox(width: 14),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const Text(
+                              'Tu TrustScore',
+                              style: TextStyle(
+                                color: AppColors.textPrimary,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                            Text(
+                              'Nivel de confianza: $nivelConfianza',
+                              style: const TextStyle(
+                                color: AppColors.textSecondary,
+                                fontSize: 12,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      Text(
+                        '${(trustScore * 10).toStringAsFixed(1)}/10',
+                        style: TextStyle(
+                          color: colorTrust,
+                          fontWeight: FontWeight.bold,
+                          fontSize: 18,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 16),
+
+                // Estadísticas
+                if (_stats != null) ...[
+                  const Text(
+                    'Mis estadísticas',
+                    style: TextStyle(color: AppColors.textPrimary, fontWeight: FontWeight.w600),
+                  ),
+                  const SizedBox(height: 10),
+                  Row(
+                    children: [
+                      _statCard(
+                        '${_stats!['total_reportes'] ?? 0}',
+                        'Total\nreportes',
+                        AppColors.textSecondary,
+                      ),
+                      const SizedBox(width: 8),
+                      _statCard(
+                        '${_stats!['reportes_verificados'] ?? 0}',
+                        'Verificados',
+                        AppColors.safe,
+                      ),
+                      const SizedBox(width: 8),
+                      _statCard(
+                        '${_stats!['reportes_pendientes'] ?? 0}',
+                        'Pendientes',
+                        AppColors.warning,
+                      ),
+                      const SizedBox(width: 8),
+                      _statCard(
+                        '${_stats!['reportes_rechazados'] ?? 0}',
+                        'Rechazados',
+                        AppColors.danger,
+                      ),
+                    ],
+                  ),
+                  if (_stats!['categoria_mas_reportada'] != null) ...[
+                    const SizedBox(height: 10),
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                      decoration: BoxDecoration(
+                        color: AppColors.surface,
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: Row(
+                        children: [
+                          const Icon(Icons.bar_chart, color: AppColors.textSecondary, size: 18),
+                          const SizedBox(width: 10),
+                          Text(
+                            'Categoría más reportada: ${_stats!['categoria_mas_reportada']}',
+                            style: const TextStyle(color: AppColors.textSecondary, fontSize: 13),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                  const SizedBox(height: 20),
+                ],
+
+                // Mis reportes
                 const Text(
                   'Mis reportes',
                   style: TextStyle(color: AppColors.textPrimary, fontWeight: FontWeight.w600),
@@ -154,6 +304,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
                         ),
                       )),
                 const SizedBox(height: 12),
+
+                // Contactos de confianza
                 ListTile(
                   leading: const Icon(Icons.people_outline, color: AppColors.textPrimary),
                   title: const Text(
@@ -166,6 +318,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   ),
                 ),
                 const SizedBox(height: 20),
+
+                // Cerrar sesión
                 OutlinedButton(
                   onPressed: _cerrarSesion,
                   style: OutlinedButton.styleFrom(
