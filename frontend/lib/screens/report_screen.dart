@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:http/http.dart' as http;
+import '../config.dart';
 import '../theme.dart';
 import '../widgets/map_placeholder.dart';
 
@@ -50,7 +51,7 @@ class _ReportScreenState extends State<ReportScreen> {
       }
 
       final response = await http.post(
-        Uri.parse('http://localhost:3000/reportes'),
+        Uri.parse('${ApiConfig.baseUrl}/reportes'),
         headers: {
           'Content-Type': 'application/json',
           'Authorization': 'Bearer $token',

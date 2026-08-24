@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:http/http.dart' as http;
+import '../config.dart';
 import '../theme.dart';
 import '../widgets/map_placeholder.dart';
 import 'sos_screen.dart';
@@ -14,7 +15,7 @@ class HomeScreen extends StatefulWidget {
 }
 
 class _HomeScreenState extends State<HomeScreen> {
-  static const String baseUrl = 'http://localhost:3000';
+  // baseUrl centralizado en config.dart
 
   List<dynamic> _reportes = [];
   String _nivelZona = 'Cargando...';
@@ -34,7 +35,7 @@ class _HomeScreenState extends State<HomeScreen> {
       if (token == null) return;
 
       final response = await http.get(
-        Uri.parse('$baseUrl/reportes'),
+        Uri.parse('${ApiConfig.baseUrl}/reportes'),
         headers: {'Authorization': 'Bearer $token'},
       );
 

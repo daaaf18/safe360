@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:http/http.dart' as http;
+import '../config.dart';
 import '../theme.dart';
 import '../widgets/map_placeholder.dart';
 
@@ -13,7 +14,7 @@ class SafeRouteScreen extends StatefulWidget {
 }
 
 class _SafeRouteScreenState extends State<SafeRouteScreen> {
-  static const String baseUrl = 'http://localhost:3000';
+  // baseUrl centralizado en config.dart
 
   final _origenCtrl = TextEditingController();
   final _destinoCtrl = TextEditingController();
@@ -46,7 +47,7 @@ class _SafeRouteScreenState extends State<SafeRouteScreen> {
       }
 
       final response = await http.post(
-        Uri.parse('$baseUrl/rutas/segura'),
+        Uri.parse('${ApiConfig.baseUrl}/rutas/segura'),
         headers: {
           'Content-Type': 'application/json',
           'Authorization': 'Bearer $token',
