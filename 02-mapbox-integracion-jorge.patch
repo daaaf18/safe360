@@ -1,0 +1,574 @@
+diff --git a/frontend/.gitignore b/frontend/.gitignore
+index 3820a95..0b3cc6f 100644
+--- a/frontend/.gitignore
++++ b/frontend/.gitignore
+@@ -43,3 +43,6 @@ app.*.map.json
+ /android/app/debug
+ /android/app/profile
+ /android/app/release
++
++# Credenciales locales (token de Mapbox). Nunca se sube al repo.
++env.json
+diff --git a/frontend/README.md b/frontend/README.md
+index 8d4013a..cb8200d 100644
+--- a/frontend/README.md
++++ b/frontend/README.md
+@@ -1,8 +1,7 @@
+ # Safe360 - Frontend (Flutter)
+ 
+-Plantilla inicial del frontend con las 8 pantallas principales, navegación
+-funcional y datos de ejemplo (mock). Aún no incluye Mapbox real ni conexión
+-al backend — eso se integra después.
++Frontend con las 9 pantallas principales, navegación funcional, conexión
++real al backend (auth, reportes, rutas) y mapa real de Mapbox.
+ 
+ ## Pantallas incluidas
+ 1. Login (`lib/screens/login_screen.dart`)
+@@ -17,27 +16,28 @@ al backend — eso se integra después.
+ 
+ ## Cómo correrlo
+ 1. Necesitas el Flutter SDK instalado (https://docs.flutter.dev/get-started/install)
+-2. Dentro de esta carpeta:
++2. Conseguí un token público de Mapbox (gratis) en
++   https://console.mapbox.com/account/access-tokens/
++3. Dentro de esta carpeta (`frontend/`), copiá `env.example.json` a
++   `env.json` y completá tu token:
+    ```
+-   flutter pub get
+-   flutter run
++   cp env.example.json env.json
+    ```
+-
+-## Cómo integrarlo al repo `safe360`
+-1. Copia todo el contenido de esta carpeta dentro de `frontend/` en el repo
+-2. Desde la raíz del repo:
++4. Instalá dependencias y corré la app:
+    ```
+-   git checkout -b frontend-flutter
+-   git add frontend/
+-   git commit -m "Estructura inicial del frontend en Flutter"
+-   git push origin frontend-flutter
++   flutter pub get
++   flutter run --dart-define-from-file=env.json
+    ```
+-3. Abre un Pull Request de `frontend-flutter` → `main` para revisión del equipo
++   `env.json` está en `.gitignore`, nunca se sube al repo — cada dev usa
++   el suyo.
+ 
+ ## Próximos pasos pendientes
+-- Reemplazar `lib/widgets/map_placeholder.dart` por la integración real de
+-  Mapbox (paquete `mapbox_maps_flutter`) usando los datos de heatmap del
+-  backend (PostGIS)
+-- Conectar los formularios (login, registro, reportar) a los endpoints reales
+-- Conectar Chaty a un servicio de voz/NLP real
++- Conectar el mapa a los datos reales de heatmap/luminarias del backend
++  (`GET /luminarias`), no solo a `reportes`.
++- Reemplazar la línea recta de "Ruta segura" por geometría real de ruta
++  cuando el backend la exponga (ver `TODO(Jorge)` en
++  `lib/widgets/safe360_map.dart`).
++- Conectar Chaty (ya tiene backend real en `POST /chaty`) a la UI y
++  agregar speech-to-text al botón del micro.
+ - Agregar manejo de estado (Provider, Riverpod o Bloc) en vez de datos mock
++  donde todavía queden.
+diff --git a/frontend/android/app/src/main/AndroidManifest.xml b/frontend/android/app/src/main/AndroidManifest.xml
+index 435731d..39e3bbd 100644
+--- a/frontend/android/app/src/main/AndroidManifest.xml
++++ b/frontend/android/app/src/main/AndroidManifest.xml
+@@ -2,6 +2,8 @@
+         <uses-permission android:name="android.permission.READ_CONTACTS"/>
+         <uses-permission android:name="android.permission.WRITE_CONTACTS"/>
+         <uses-permission android:name="android.permission.INTERNET"/>
++        <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION"/>
++        <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION"/>
+     <application
+         android:label="safe360"
+         android:name="${applicationName}"
+diff --git a/frontend/env.example.json b/frontend/env.example.json
+new file mode 100644
+index 0000000..7e93ba3
+--- /dev/null
++++ b/frontend/env.example.json
+@@ -0,0 +1,3 @@
++{
++  "MAPBOX_ACCESS_TOKEN": "pk.TU_TOKEN_PUBLICO_DE_MAPBOX_AQUI"
++}
+diff --git a/frontend/lib/main.dart b/frontend/lib/main.dart
+index a7417dd..1074713 100644
+--- a/frontend/lib/main.dart
++++ b/frontend/lib/main.dart
+@@ -1,8 +1,24 @@
+ import 'package:flutter/material.dart';
++import 'package:mapbox_maps_flutter/mapbox_maps_flutter.dart';
+ import 'theme.dart';
+ import 'screens/login_screen.dart';
+ 
+ void main() {
++  WidgetsFlutterBinding.ensureInitialized();
++
++  // El token público de Mapbox se pasa en tiempo de build/run con:
++  //   flutter run --dart-define-from-file=env.json
++  // Ver env.example.json para el formato esperado.
++  const accessToken = String.fromEnvironment('MAPBOX_ACCESS_TOKEN');
++  if (accessToken.isNotEmpty) {
++    MapboxOptions.setAccessToken(accessToken);
++  } else {
++    debugPrint(
++      '⚠️  MAPBOX_ACCESS_TOKEN no configurado. El mapa no va a cargar tiles. '
++      'Corré la app con --dart-define-from-file=env.json',
++    );
++  }
++
+   runApp(const Safe360App());
+ }
+ 
+diff --git a/frontend/lib/screens/home_screen.dart b/frontend/lib/screens/home_screen.dart
+index a117534..e96423c 100644
+--- a/frontend/lib/screens/home_screen.dart
++++ b/frontend/lib/screens/home_screen.dart
+@@ -3,7 +3,7 @@ import 'package:flutter/material.dart';
+ import 'package:shared_preferences/shared_preferences.dart';
+ import 'package:http/http.dart' as http;
+ import '../theme.dart';
+-import '../widgets/map_placeholder.dart';
++import '../widgets/safe360_map.dart';
+ import 'sos_screen.dart';
+ 
+ class HomeScreen extends StatefulWidget {
+@@ -74,7 +74,7 @@ class _HomeScreenState extends State<HomeScreen> {
+   Widget build(BuildContext context) {
+     return Stack(
+       children: [
+-        MapPlaceholder(reportes: _reportes),
++        Safe360Map(reportes: _reportes),
+         SafeArea(
+           child: Padding(
+             padding: const EdgeInsets.all(16),
+diff --git a/frontend/lib/screens/report_screen.dart b/frontend/lib/screens/report_screen.dart
+index bc0b638..fdae128 100644
+--- a/frontend/lib/screens/report_screen.dart
++++ b/frontend/lib/screens/report_screen.dart
+@@ -3,7 +3,7 @@ import 'package:flutter/material.dart';
+ import 'package:shared_preferences/shared_preferences.dart';
+ import 'package:http/http.dart' as http;
+ import '../theme.dart';
+-import '../widgets/map_placeholder.dart';
++import '../widgets/safe360_map.dart';
+ 
+ class ReportScreen extends StatefulWidget {
+   const ReportScreen({super.key});
+@@ -146,7 +146,10 @@ class _ReportScreenState extends State<ReportScreen> {
+           const SizedBox(height: 8),
+           ClipRRect(
+             borderRadius: BorderRadius.circular(14),
+-            child: const SizedBox(height: 140, child: MapPlaceholder()),
++            child: SizedBox(
++              height: 140,
++              child: Safe360Map(centerLat: _latitud, centerLon: _longitud),
++            ),
+           ),
+           if (_error != null) ...[
+             const SizedBox(height: 12),
+diff --git a/frontend/lib/screens/safe_route_screen.dart b/frontend/lib/screens/safe_route_screen.dart
+index 1fb403c..892a028 100644
+--- a/frontend/lib/screens/safe_route_screen.dart
++++ b/frontend/lib/screens/safe_route_screen.dart
+@@ -3,7 +3,7 @@ import 'package:flutter/material.dart';
+ import 'package:shared_preferences/shared_preferences.dart';
+ import 'package:http/http.dart' as http;
+ import '../theme.dart';
+-import '../widgets/map_placeholder.dart';
++import '../widgets/safe360_map.dart';
+ 
+ class SafeRouteScreen extends StatefulWidget {
+   const SafeRouteScreen({super.key});
+@@ -125,7 +125,18 @@ class _SafeRouteScreenState extends State<SafeRouteScreen> {
+           const SizedBox(height: 20),
+           ClipRRect(
+             borderRadius: BorderRadius.circular(16),
+-            child: const SizedBox(height: 260, child: MapPlaceholder(showRoute: true)),
++            child: SizedBox(
++              height: 260,
++              child: Safe360Map(
++                showRoute: true,
++                centerLat: (_origenLat + _destinoLat) / 2,
++                centerLon: (_origenLon + _destinoLon) / 2,
++                routeOriginLat: _origenLat,
++                routeOriginLon: _origenLon,
++                routeDestLat: _destinoLat,
++                routeDestLon: _destinoLon,
++              ),
++            ),
+           ),
+           const SizedBox(height: 20),
+           Card(
+diff --git a/frontend/lib/widgets/map_placeholder.dart b/frontend/lib/widgets/map_placeholder.dart
+deleted file mode 100644
+index dd64d18..0000000
+--- a/frontend/lib/widgets/map_placeholder.dart
++++ /dev/null
+@@ -1,166 +0,0 @@
+-import 'package:flutter/material.dart';
+-import '../theme.dart';
+-
+-/// Placeholder visual del mapa con heatmap.
+-/// Muestra reportes reales si se proporcionan, o blobs simulados si no hay datos.
+-/// TODO: reemplazar por mapbox_maps_flutter cuando se integre el SDK real.
+-class MapPlaceholder extends StatelessWidget {
+-  final bool showRoute;
+-  final List<dynamic> reportes;
+-
+-  const MapPlaceholder({
+-    super.key,
+-    this.showRoute = false,
+-    this.reportes = const [],
+-  });
+-
+-  Color _colorCategoria(String categoria) {
+-    switch (categoria.toLowerCase()) {
+-      case 'robo':
+-      case 'acoso':
+-        return AppColors.danger;
+-      case 'poca iluminación':
+-      case 'accidente vial':
+-        return AppColors.warning;
+-      default:
+-        return AppColors.warning;
+-    }
+-  }
+-
+-  // Convierte índice de reporte a posición relativa en la pantalla
+-  // Cuando se integre Mapbox, esto se reemplaza por coordenadas reales
+-  Map<String, double> _posicionSimulada(int index, int total) {
+-    final positions = [
+-      {'top': 80.0, 'left': 40.0},
+-      {'top': 220.0, 'right': 30.0},
+-      {'bottom': 140.0, 'left': 90.0},
+-      {'top': 150.0, 'left': 150.0},
+-      {'bottom': 80.0, 'right': 60.0},
+-    ];
+-    return positions[index % positions.length];
+-  }
+-
+-  @override
+-  Widget build(BuildContext context) {
+-    return Stack(
+-      fit: StackFit.expand,
+-      children: [
+-        Container(color: const Color(0xFF1A2A2E)),
+-
+-        // Blobs del heatmap — reales si hay reportes, simulados si no
+-        if (reportes.isEmpty) ...[
+-          Positioned(
+-            top: 80,
+-            left: 40,
+-            child: _blob(AppColors.safe, 120),
+-          ),
+-          Positioned(
+-            top: 220,
+-            right: 30,
+-            child: _blob(AppColors.warning, 90),
+-          ),
+-          Positioned(
+-            bottom: 140,
+-            left: 90,
+-            child: _blob(AppColors.danger, 70),
+-          ),
+-        ] else ...[
+-          ...List.generate(
+-            reportes.length > 5 ? 5 : reportes.length,
+-            (i) {
+-              final reporte = reportes[i];
+-              final color = _colorCategoria(reporte['categoria'] ?? '');
+-              final pos = _posicionSimulada(i, reportes.length);
+-              final size = reporte['estado'] == 'verificado' ? 100.0 : 70.0;
+-
+-              Widget blob = _blob(color, size);
+-
+-              if (pos.containsKey('right') && pos.containsKey('bottom')) {
+-                return Positioned(bottom: pos['bottom'], right: pos['right'], child: blob);
+-              } else if (pos.containsKey('right')) {
+-                return Positioned(top: pos['top'], right: pos['right'], child: blob);
+-              } else if (pos.containsKey('bottom')) {
+-                return Positioned(bottom: pos['bottom'], left: pos['left'], child: blob);
+-              } else {
+-                return Positioned(top: pos['top'], left: pos['left'], child: blob);
+-              }
+-            },
+-          ),
+-        ],
+-
+-        if (showRoute)
+-          Positioned(
+-            top: 150,
+-            left: 60,
+-            right: 60,
+-            bottom: 200,
+-            child: CustomPaint(painter: _RoutePainter()),
+-          ),
+-
+-        Center(
+-          child: Icon(
+-            Icons.my_location,
+-            color: Colors.white.withOpacity(0.9),
+-            size: 28,
+-          ),
+-        ),
+-
+-        Positioned(
+-          bottom: 12,
+-          right: 12,
+-          child: Text(
+-            reportes.isEmpty
+-                ? 'Vista previa del mapa'
+-                : '${reportes.length} reporte${reportes.length != 1 ? 's' : ''} en la zona',
+-            style: TextStyle(
+-              color: Colors.white.withOpacity(0.4),
+-              fontSize: 11,
+-            ),
+-          ),
+-        ),
+-      ],
+-    );
+-  }
+-
+-  Widget _blob(Color color, double size) {
+-    return Container(
+-      width: size,
+-      height: size,
+-      decoration: BoxDecoration(
+-        shape: BoxShape.circle,
+-        color: color.withOpacity(0.35),
+-        boxShadow: [
+-          BoxShadow(color: color.withOpacity(0.25), blurRadius: 40),
+-        ],
+-      ),
+-    );
+-  }
+-}
+-
+-class _RoutePainter extends CustomPainter {
+-  @override
+-  void paint(Canvas canvas, Size size) {
+-    final path = Path()
+-      ..moveTo(0, size.height)
+-      ..quadraticBezierTo(
+-          size.width * 0.3, size.height * 0.5, size.width * 0.5, size.height * 0.4)
+-      ..quadraticBezierTo(
+-          size.width * 0.8, size.height * 0.3, size.width, 0);
+-
+-    final segments = [AppColors.safe, AppColors.warning, AppColors.danger];
+-    for (var i = 0; i < segments.length; i++) {
+-      final paint = Paint()
+-        ..color = segments[i]
+-        ..strokeWidth = 5
+-        ..style = PaintingStyle.stroke
+-        ..strokeCap = StrokeCap.round;
+-      final metrics = path.computeMetrics().first;
+-      final start = metrics.length * (i / segments.length);
+-      final end = metrics.length * ((i + 1) / segments.length);
+-      canvas.drawPath(metrics.extractPath(start, end), paint);
+-    }
+-  }
+-
+-  @override
+-  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
+-}
+\ No newline at end of file
+diff --git a/frontend/lib/widgets/safe360_map.dart b/frontend/lib/widgets/safe360_map.dart
+new file mode 100644
+index 0000000..ed663a6
+--- /dev/null
++++ b/frontend/lib/widgets/safe360_map.dart
+@@ -0,0 +1,179 @@
++import 'package:flutter/material.dart';
++import 'package:geolocator/geolocator.dart';
++import 'package:mapbox_maps_flutter/mapbox_maps_flutter.dart';
++import 'package:permission_handler/permission_handler.dart';
++import '../theme.dart';
++
++/// Mapa real de Mapbox.
++///
++/// Reemplaza a `MapPlaceholder` manteniendo la misma firma (`showRoute`,
++/// `reportes`) para que el swap en las pantallas (Home, Reportar, Ruta
++/// segura) sea directo, sin tocar el resto de cada pantalla.
++class Safe360Map extends StatefulWidget {
++  final bool showRoute;
++  final List<dynamic> reportes;
++
++  /// Centro inicial del mapa. Si es null, usa el centro de Puebla y además
++  /// intenta centrar en la ubicación real del usuario (cuando da el
++  /// permiso). Si se especifica, el mapa se queda fijo ahí (por ejemplo,
++  /// la mini-preview de "Reportar incidente" que muestra el punto exacto
++  /// del incidente).
++  final double? centerLat;
++  final double? centerLon;
++
++  /// Puntos de origen/destino para dibujar la línea de ruta cuando
++  /// [showRoute] es true.
++  final double? routeOriginLat;
++  final double? routeOriginLon;
++  final double? routeDestLat;
++  final double? routeDestLon;
++
++  const Safe360Map({
++    super.key,
++    this.showRoute = false,
++    this.reportes = const [],
++    this.centerLat,
++    this.centerLon,
++    this.routeOriginLat,
++    this.routeOriginLon,
++    this.routeDestLat,
++    this.routeDestLon,
++  });
++
++  @override
++  State<Safe360Map> createState() => _Safe360MapState();
++}
++
++class _Safe360MapState extends State<Safe360Map> {
++  MapboxMap? _mapboxMap;
++  CircleAnnotationManager? _circleManager;
++  PolylineAnnotationManager? _routeManager;
++
++  // Centro por defecto: Puebla, México (zona piloto del dataset de reportes
++  // y luminarias).
++  static const double _defaultLat = 19.0414;
++  static const double _defaultLon = -98.2063;
++
++  late final CameraOptions _initialCamera = CameraOptions(
++    center: Point(
++      coordinates: Position(
++        widget.centerLon ?? _defaultLon,
++        widget.centerLat ?? _defaultLat,
++      ),
++    ),
++    zoom: 14,
++  );
++
++  Future<void> _onMapCreated(MapboxMap mapboxMap) async {
++    _mapboxMap = mapboxMap;
++
++    if (widget.reportes.isNotEmpty) {
++      _circleManager =
++          await mapboxMap.annotations.createCircleAnnotationManager();
++      await _pintarReportes();
++    }
++
++    if (widget.showRoute) {
++      _routeManager =
++          await mapboxMap.annotations.createPolylineAnnotationManager();
++      await _dibujarRuta();
++    }
++
++    // Solo perseguimos el GPS del usuario cuando la pantalla no pidió un
++    // centro explícito (Home sí quiere seguir al usuario; el preview de
++    // "Reportar" o el mapa de "Ruta segura" quieren quedarse fijos).
++    if (widget.centerLat == null && widget.centerLon == null) {
++      await _centrarEnUsuario();
++    }
++  }
++
++  Color _colorCategoria(String categoria) {
++    switch (categoria.toLowerCase()) {
++      case 'robo':
++      case 'acoso':
++        return AppColors.danger;
++      case 'poca iluminación':
++      case 'accidente vial':
++        return AppColors.warning;
++      default:
++        return AppColors.warning;
++    }
++  }
++
++  Future<void> _pintarReportes() async {
++    for (final reporte in widget.reportes) {
++      final lat = double.tryParse('${reporte['latitud']}');
++      final lon = double.tryParse('${reporte['longitud']}');
++      if (lat == null || lon == null) continue;
++
++      await _circleManager?.create(
++        CircleAnnotationOptions(
++          geometry: Point(coordinates: Position(lon, lat)),
++          circleColor: _colorCategoria(reporte['categoria'] ?? '').value,
++          circleRadius: reporte['estado'] == 'verificado' ? 10.0 : 7.0,
++          circleOpacity: 0.85,
++          circleStrokeColor: Colors.white.value,
++          circleStrokeWidth: 1.5,
++        ),
++      );
++    }
++  }
++
++  // TODO(Jorge): esto dibuja una línea recta entre origen y destino.
++  // El endpoint POST /rutas/segura hoy solo devuelve trust_score_promedio,
++  // no geometría de ruta real. Cuando el backend la exponga, reemplazar
++  // este LineString por esos puntos.
++  Future<void> _dibujarRuta() async {
++    final origenLat = widget.routeOriginLat ?? 19.0434;
++    final origenLon = widget.routeOriginLon ?? -98.1983;
++    final destLat = widget.routeDestLat ?? 19.0432;
++    final destLon = widget.routeDestLon ?? -98.1982;
++
++    await _routeManager?.create(
++      PolylineAnnotationOptions(
++        geometry: LineString(coordinates: [
++          Position(origenLon, origenLat),
++          Position(destLon, destLat),
++        ]),
++        lineColor: AppColors.safe.value,
++        lineWidth: 4.0,
++      ),
++    );
++  }
++
++  Future<void> _centrarEnUsuario() async {
++    final status = await Permission.locationWhenInUse.request();
++    if (!status.isGranted) return;
++
++    await _mapboxMap?.location.updateSettings(
++      LocationComponentSettings(enabled: true, pulsingEnabled: true),
++    );
++
++    try {
++      final position = await Geolocator.getCurrentPosition(
++        locationSettings:
++            const LocationSettings(accuracy: LocationAccuracy.medium),
++      );
++      await _mapboxMap?.flyTo(
++        CameraOptions(
++          center: Point(
++              coordinates: Position(position.longitude, position.latitude)),
++          zoom: 15,
++        ),
++        MapAnimationOptions(duration: 1200),
++      );
++    } catch (_) {
++      // Sin GPS disponible (emulador sin ubicación simulada, permiso
++      // denegado, etc.): el mapa se queda en el centro por defecto.
++    }
++  }
++
++  @override
++  Widget build(BuildContext context) {
++    return MapWidget(
++      cameraOptions: _initialCamera,
++      styleUri: MapboxStyles.DARK,
++      onMapCreated: _onMapCreated,
++    );
++  }
++}
+diff --git a/frontend/pubspec.yaml b/frontend/pubspec.yaml
+index b2c242c..dc5217d 100644
+--- a/frontend/pubspec.yaml
++++ b/frontend/pubspec.yaml
+@@ -15,6 +15,8 @@ dependencies:
+   google_sign_in: ^6.2.1
+   flutter_contacts: ^1.1.9+1
+   permission_handler: ^11.3.1
++  mapbox_maps_flutter: ^2.4.0
++  geolocator: ^13.0.1
+   
+ dev_dependencies:
+   flutter_test:

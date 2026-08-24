@@ -1,7 +1,9 @@
 import 'dart:convert';
 import 'package:flutter/material.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 import 'package:http/http.dart' as http;
+import 'package:permission_handler/permission_handler.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'package:speech_to_text/speech_to_text.dart' as stt;
 import '../config.dart';
 import '../theme.dart';
 import 'safe_route_screen.dart';
@@ -12,7 +14,8 @@ class _Message {
   final String text;
   final bool fromUser;
   final String? accion; // acción sugerida por el backend, si aplica
-  const _Message(this.text, this.fromUser, {this.accion});
+  final bool isAlert; // estilo visual distinto para avisos/errores
+  const _Message(this.text, this.fromUser, {this.accion, this.isAlert = false});
 }
 
 class ChatyScreen extends StatefulWidget {
@@ -23,40 +26,94 @@ class ChatyScreen extends StatefulWidget {
 }
 
 class _ChatyScreenState extends State<ChatyScreen> {
-  final _controller = TextEditingController();
-  final _scrollController = ScrollController();
-
   final List<_Message> _messages = [
     const _Message(
-        'Hola, soy Chaty 💚 Puedo ayudarte a calcular una ruta segura, '
-        'activar el SOS, consultar el riesgo de una zona o abrir un reporte. '
-        '¿En qué te ayudo?',
+        'Hola, soy Chaty 💚 Podés pedirme una ruta segura, activar el SOS, '
+        'consultar el riesgo de tu zona o abrir un reporte. Tocá el '
+        'micrófono para hablarme.',
         false),
   ];
 
-  bool _sending = false;
+  final stt.SpeechToText _speech = stt.SpeechToText();
+  final ScrollController _scrollController = ScrollController();
 
-  Future<void> _enviarMensaje() async {
-    final texto = _controller.text.trim();
-    if (texto.isEmpty || _sending) return;
+  bool _speechDisponible = false;
+  bool _escuchando = false;
+  bool _enviando = false;
+  String _textoParcial = '';
+
+  @override
+  void initState() {
+    super.initState();
+    _inicializarSpeech();
+  }
+
+  Future<void> _inicializarSpeech() async {
+    final disponible = await _speech.initialize(
+      onError: (error) {
+        setState(() => _escuchando = false);
+        _mostrarError('No se pudo escuchar: ${error.errorMsg}');
+      },
+      onStatus: (status) {
+        if (status == 'done' || status == 'notListening') {
+          setState(() => _escuchando = false);
+        }
+      },
+    );
+    if (mounted) setState(() => _speechDisponible = disponible);
+  }
+
+  Future<void> _alTocarMicrofono() async {
+    if (_escuchando) {
+      await _speech.stop();
+      setState(() => _escuchando = false);
+      return;
+    }
+
+    final permiso = await Permission.microphone.request();
+    if (!permiso.isGranted) {
+      _mostrarError('Necesito permiso de micrófono para escucharte.');
+      return;
+    }
+
+    if (!_speechDisponible) {
+      _mostrarError('El reconocimiento de voz no está disponible en este dispositivo.');
+      return;
+    }
 
     setState(() {
-      _messages.add(_Message(texto, true));
-      _controller.clear();
-      _sending = true;
+      _escuchando = true;
+      _textoParcial = '';
     });
-    _scrollToEnd();
+
+    await _speech.listen(
+      localeId: 'es_MX',
+      onResult: (result) {
+        setState(() => _textoParcial = result.recognizedWords);
+        if (result.finalResult && result.recognizedWords.trim().isNotEmpty) {
+          _enviarMensaje(result.recognizedWords.trim());
+        }
+      },
+    );
+  }
+
+  Future<void> _enviarMensaje(String texto) async {
+    setState(() {
+      _messages.add(_Message(texto, true));
+      _escuchando = false;
+      _textoParcial = '';
+      _enviando = true;
+    });
+    _scrollAlFinal();
 
     try {
       final prefs = await SharedPreferences.getInstance();
       final token = prefs.getString('token');
-
       if (token == null) {
-        setState(() {
-          _messages.add(const _Message(
-              'Necesitas iniciar sesión para hablar con Chaty.', false));
-          _sending = false;
-        });
+        _agregarRespuesta(
+          'Necesitás iniciar sesión de nuevo para hablar con Chaty.',
+          isAlert: true,
+        );
         return;
       }
 
@@ -69,32 +126,36 @@ class _ChatyScreenState extends State<ChatyScreen> {
         body: jsonEncode({'mensaje': texto}),
       );
 
-      final data = jsonDecode(response.body);
-
-      setState(() {
-        if (response.statusCode == 200) {
-          _messages.add(_Message(
-            data['mensaje'] ?? 'Entendido.',
-            false,
-            accion: data['accion'],
-          ));
-        } else {
-          _messages.add(_Message(
-              data['error'] ?? 'No pude procesar tu mensaje.', false));
-        }
-        _sending = false;
-      });
-    } catch (e) {
-      setState(() {
-        _messages.add(const _Message(
-            'No pude conectarme con el servidor. Intenta de nuevo.', false));
-        _sending = false;
-      });
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        final respuesta = data['mensaje'] ?? data['respuesta'] ?? data['texto'];
+        _agregarRespuesta(
+          respuesta is String && respuesta.isNotEmpty ? respuesta : 'Recibido 💚',
+          accion: data['accion'] as String?,
+        );
+      } else {
+        _agregarRespuesta(
+          'No pude procesar eso ahora mismo. Intentá de nuevo en un momento.',
+          isAlert: true,
+        );
+      }
+    } catch (_) {
+      _agregarRespuesta(
+        'No pude conectarme con Chaty. Revisá tu conexión.',
+        isAlert: true,
+      );
+    } finally {
+      if (mounted) setState(() => _enviando = false);
     }
-    _scrollToEnd();
   }
 
-  void _scrollToEnd() {
+  void _agregarRespuesta(String texto, {bool isAlert = false, String? accion}) {
+    if (!mounted) return;
+    setState(() => _messages.add(_Message(texto, false, isAlert: isAlert, accion: accion)));
+    _scrollAlFinal();
+  }
+
+  void _scrollAlFinal() {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (_scrollController.hasClients) {
         _scrollController.animateTo(
@@ -104,6 +165,18 @@ class _ChatyScreenState extends State<ChatyScreen> {
         );
       }
     });
+  }
+
+  void _mostrarError(String mensaje) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(mensaje)));
+  }
+
+  @override
+  void dispose() {
+    _speech.stop();
+    _scrollController.dispose();
+    super.dispose();
   }
 
   /// Traduce la "accion" que regresa el backend en un botón de navegación.
@@ -123,7 +196,6 @@ class _ChatyScreenState extends State<ChatyScreen> {
         return _goToButton('Ir a Reportar', Icons.warning_amber_rounded,
             () => Navigator.of(context).push(
                 MaterialPageRoute(builder: (_) => const ReportScreen())));
-      case 'consultar_zona':
       default:
         return null; // 'responder' y 'consultar_zona' se quedan como texto
     }
@@ -169,55 +241,52 @@ class _ChatyScreenState extends State<ChatyScreen> {
       body: Column(
         children: [
           Expanded(
-            child: ListView.builder(
+            child: ListView(
               controller: _scrollController,
               padding: const EdgeInsets.all(16),
-              itemCount: _messages.length + (_sending ? 1 : 0),
-              itemBuilder: (context, i) {
-                if (i == _messages.length) {
-                  return const Padding(
-                    padding: EdgeInsets.only(left: 4, top: 4),
-                    child: Text('Chaty está escribiendo...',
-                        style: TextStyle(color: AppColors.textSecondary, fontSize: 11)),
-                  );
-                }
-                return _bubble(_messages[i]);
-              },
+              children: _messages.map((m) => _bubble(m)).toList(),
             ),
           ),
+          if (_escuchando)
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              child: Text(
+                _textoParcial.isEmpty ? 'Escuchando…' : _textoParcial,
+                style: const TextStyle(
+                  color: AppColors.textSecondary,
+                  fontStyle: FontStyle.italic,
+                ),
+                textAlign: TextAlign.center,
+              ),
+            ),
           Padding(
             padding: const EdgeInsets.all(16),
-            child: Row(
-              children: [
-                Expanded(
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 14),
-                    decoration: BoxDecoration(
-                        color: AppColors.surface, borderRadius: BorderRadius.circular(30)),
-                    child: TextField(
-                      controller: _controller,
-                      onSubmitted: (_) => _enviarMensaje(),
-                      style: const TextStyle(color: AppColors.textPrimary),
-                      decoration: const InputDecoration(
-                        hintText: 'Escribe un mensaje...',
-                        border: InputBorder.none,
-                        isDense: true,
-                      ),
-                    ),
+            child: Center(
+              child: GestureDetector(
+                onTap: _enviando ? null : _alTocarMicrofono,
+                child: AnimatedContainer(
+                  duration: const Duration(milliseconds: 200),
+                  width: 72,
+                  height: 72,
+                  decoration: BoxDecoration(
+                    color: _escuchando ? AppColors.danger : AppColors.safe,
+                    shape: BoxShape.circle,
                   ),
+                  child: _enviando
+                      ? const Padding(
+                          padding: EdgeInsets.all(20),
+                          child: CircularProgressIndicator(
+                            color: Colors.white,
+                            strokeWidth: 3,
+                          ),
+                        )
+                      : Icon(
+                          _escuchando ? Icons.mic : Icons.mic_none,
+                          color: Colors.white,
+                          size: 32,
+                        ),
                 ),
-                const SizedBox(width: 10),
-                GestureDetector(
-                  onTap: _enviarMensaje,
-                  child: Container(
-                    width: 46,
-                    height: 46,
-                    decoration:
-                        const BoxDecoration(color: AppColors.safe, shape: BoxShape.circle),
-                    child: const Icon(Icons.send, color: Colors.white, size: 18),
-                  ),
-                ),
-              ],
+              ),
             ),
           ),
         ],
@@ -227,8 +296,12 @@ class _ChatyScreenState extends State<ChatyScreen> {
 
   Widget _bubble(_Message m) {
     final align = m.fromUser ? Alignment.centerRight : Alignment.centerLeft;
-    final color = m.fromUser ? AppColors.safe : AppColors.surface;
-    final textColor = m.fromUser ? Colors.white : AppColors.textPrimary;
+    final color = m.isAlert
+        ? AppColors.warning.withOpacity(0.15)
+        : (m.fromUser ? AppColors.safe : AppColors.surface);
+    final textColor = m.isAlert
+        ? AppColors.warning
+        : (m.fromUser ? Colors.white : AppColors.textPrimary);
     final action = m.fromUser ? null : _actionButton(m.accion);
 
     return Align(
@@ -237,7 +310,13 @@ class _ChatyScreenState extends State<ChatyScreen> {
         margin: const EdgeInsets.symmetric(vertical: 6),
         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
         constraints: const BoxConstraints(maxWidth: 280),
-        decoration: BoxDecoration(color: color, borderRadius: BorderRadius.circular(16)),
+        decoration: BoxDecoration(
+          color: color,
+          borderRadius: BorderRadius.circular(16),
+          border: m.isAlert
+              ? Border.all(color: AppColors.warning.withOpacity(0.5))
+              : null,
+        ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
