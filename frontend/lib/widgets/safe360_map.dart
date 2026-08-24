@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:geolocator/geolocator.dart';
+import 'package:geolocator/geolocator.dart' as geo;
 import 'package:mapbox_maps_flutter/mapbox_maps_flutter.dart';
 import 'package:permission_handler/permission_handler.dart';
 import '../theme.dart';
@@ -9,7 +9,7 @@ import '../theme.dart';
 /// Reemplaza a `MapPlaceholder` manteniendo la misma firma (`showRoute`,
 /// `reportes`) para que el swap en las pantallas (Home, Reportar, Ruta
 /// segura) sea directo, sin tocar el resto de cada pantalla.
-class Safe360Map extends StatefulWidget {
+class Safe360Map extends StatefulWidget { 
   final bool showRoute;
   final List<dynamic> reportes;
 
@@ -150,9 +150,9 @@ class _Safe360MapState extends State<Safe360Map> {
     );
 
     try {
-      final position = await Geolocator.getCurrentPosition(
+      final position = await geo.Geolocator.getCurrentPosition(
         locationSettings:
-            const LocationSettings(accuracy: LocationAccuracy.medium),
+            const geo.LocationSettings(accuracy: geo.LocationAccuracy.medium),
       );
       await _mapboxMap?.flyTo(
         CameraOptions(
