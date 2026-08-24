@@ -29,9 +29,12 @@ const crearReporte = async (req, res) => {
   }
 };
 
-// GET /reportes — Listar reportes
+// GET /reportes — Listar reportes con paginación
 const getReportes = async (req, res) => {
   const { categoria, latitud, longitud, radio } = req.query;
+  const limite = Math.min(parseInt(req.query.limite) || 20, 100);
+  const pagina = Math.max(parseInt(req.query.pagina) || 1, 1);
+  const offset = (pagina - 1) * limite;
 
   try {
     let query = `SELECT id, usuario_id, categoria, descripcion, evidencia_url,
@@ -53,10 +56,17 @@ const getReportes = async (req, res) => {
       )`;
     }
 
-    query += ' ORDER BY created_at DESC';
+    query += ` ORDER BY created_at DESC LIMIT $${params.length + 1} OFFSET $${params.length + 2}`;
+    params.push(limite, offset);
 
     const resultado = await pool.query(query, params);
-    res.json(resultado.rows);
+
+    res.json({
+      pagina,
+      limite,
+      total: resultado.rows.length,
+      reportes: resultado.rows,
+    });
   } catch (error) {
     console.error('Error en getReportes:', error.message);
     res.status(500).json({ error: 'Error interno del servidor' });
