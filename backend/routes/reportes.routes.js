@@ -2,10 +2,9 @@ const express = require('express');
 const router = express.Router();
 const reportesController = require('../controllers/reportes.controller');
 const { verificarToken } = require('../middleware/auth.middleware');
-const upload = require('../middleware/upload.middleware');
 
-// POST /reportes — Crear un reporte con evidencia multimedia
-router.post('/', verificarToken, upload.single('evidencia'), reportesController.crearReporte);
+// POST /reportes — Crear un reporte
+router.post('/', verificarToken, reportesController.crearReporte);
 
 // GET /reportes — Listar reportes (filtrado por zona o categoría)
 router.get('/', verificarToken, reportesController.getReportes);
