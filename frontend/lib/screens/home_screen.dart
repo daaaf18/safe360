@@ -3,7 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:http/http.dart' as http;
 import '../theme.dart';
-import '../widgets/map_placeholder.dart';
+import '../widgets/safe360_map.dart';
 import 'sos_screen.dart';
 
 class HomeScreen extends StatefulWidget {
@@ -74,7 +74,7 @@ class _HomeScreenState extends State<HomeScreen> {
   Widget build(BuildContext context) {
     return Stack(
       children: [
-        MapPlaceholder(reportes: _reportes),
+        Safe360Map(reportes: _reportes),
         SafeArea(
           child: Padding(
             padding: const EdgeInsets.all(16),

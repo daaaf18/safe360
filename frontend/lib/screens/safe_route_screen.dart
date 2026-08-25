@@ -3,7 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:http/http.dart' as http;
 import '../theme.dart';
-import '../widgets/map_placeholder.dart';
+import '../widgets/safe360_map.dart';
 
 class SafeRouteScreen extends StatefulWidget {
   const SafeRouteScreen({super.key});
@@ -125,7 +125,18 @@ class _SafeRouteScreenState extends State<SafeRouteScreen> {
           const SizedBox(height: 20),
           ClipRRect(
             borderRadius: BorderRadius.circular(16),
-            child: const SizedBox(height: 260, child: MapPlaceholder(showRoute: true)),
+            child: SizedBox(
+              height: 260,
+              child: Safe360Map(
+                showRoute: true,
+                centerLat: (_origenLat + _destinoLat) / 2,
+                centerLon: (_origenLon + _destinoLon) / 2,
+                routeOriginLat: _origenLat,
+                routeOriginLon: _origenLon,
+                routeDestLat: _destinoLat,
+                routeDestLon: _destinoLon,
+              ),
+            ),
           ),
           const SizedBox(height: 20),
           Card(

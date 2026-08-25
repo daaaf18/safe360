@@ -3,7 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:http/http.dart' as http;
 import '../theme.dart';
-import '../widgets/map_placeholder.dart';
+import '../widgets/safe360_map.dart';
 
 class ReportScreen extends StatefulWidget {
   const ReportScreen({super.key});
@@ -146,7 +146,10 @@ class _ReportScreenState extends State<ReportScreen> {
           const SizedBox(height: 8),
           ClipRRect(
             borderRadius: BorderRadius.circular(14),
-            child: const SizedBox(height: 140, child: MapPlaceholder()),
+            child: SizedBox(
+              height: 140,
+              child: Safe360Map(centerLat: _latitud, centerLon: _longitud),
+            ),
           ),
           if (_error != null) ...[
             const SizedBox(height: 12),

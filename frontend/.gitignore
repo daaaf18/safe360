@@ -43,3 +43,6 @@ app.*.map.json
 /android/app/debug
 /android/app/profile
 /android/app/release
+
+# Credenciales locales (token de Mapbox). Nunca se sube al repo.
+env.json
