@@ -149,3 +149,6 @@ frontend/.flutter-plugins
 frontend/.flutter-plugins-dependencies
 frontend/*.iml
 frontend/.idea/esquema_safe360.sql
+frontend/.vs/
+02-mapbox-integracion-jorge.patch
+frontend/android/build/
