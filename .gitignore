@@ -152,3 +152,4 @@ frontend/.idea/esquema_safe360.sql
 frontend/.vs/
 02-mapbox-integracion-jorge.patch
 frontend/android/build/
+esquema_safe360.sql
