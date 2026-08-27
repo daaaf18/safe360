@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:http/http.dart' as http;
+import '../config.dart';
 import '../theme.dart';
 
 class SosScreen extends StatefulWidget {
@@ -12,7 +13,7 @@ class SosScreen extends StatefulWidget {
 }
 
 class _SosScreenState extends State<SosScreen> {
-  static const String baseUrl = 'http://10.0.2.2:3000';
+  // baseUrl centralizado en config.dart
 
   bool _activated = false;
   bool _loading = false;
@@ -42,7 +43,7 @@ class _SosScreenState extends State<SosScreen> {
       final userId = usuario['id'];
 
       final response = await http.get(
-        Uri.parse('$baseUrl/users/$userId/contactos'),
+        Uri.parse('${ApiConfig.baseUrl}/users/$userId/contactos'),
         headers: {'Authorization': 'Bearer $token'},
       );
 
@@ -70,7 +71,7 @@ class _SosScreenState extends State<SosScreen> {
       }
 
       final response = await http.post(
-        Uri.parse('$baseUrl/sos'),
+        Uri.parse('${ApiConfig.baseUrl}/sos'),
         headers: {
           'Content-Type': 'application/json',
           'Authorization': 'Bearer $token',

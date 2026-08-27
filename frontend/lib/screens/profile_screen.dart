@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:http/http.dart' as http;
+import '../config.dart';
 import '../theme.dart';
 import '../services/auth_service.dart';
 import 'login_screen.dart';
@@ -15,7 +16,6 @@ class ProfileScreen extends StatefulWidget {
 }
 
 class _ProfileScreenState extends State<ProfileScreen> {
-  static const String baseUrl = 'http://localhost:3000';
 
   String _nombre = '';
   String _email = '';
@@ -50,8 +50,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
       // Cargar reportes y estadísticas en paralelo
       final responses = await Future.wait([
-        http.get(Uri.parse('$baseUrl/reportes'), headers: {'Authorization': 'Bearer $token'}),
-        http.get(Uri.parse('$baseUrl/users/$userId/stats'), headers: {'Authorization': 'Bearer $token'}),
+        http.get(Uri.parse('${ApiConfig.baseUrl}/reportes'), headers: {'Authorization': 'Bearer $token'}),
+        http.get(Uri.parse('${ApiConfig.baseUrl}/users/$userId/stats'), headers: {'Authorization': 'Bearer $token'}),
       ]);
 
       if (responses[0].statusCode == 200) {

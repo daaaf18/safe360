@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:http/http.dart' as http;
 import 'package:flutter_contacts/flutter_contacts.dart';
+import '../config.dart';
 import '../theme.dart';
 
 class ContactsScreen extends StatefulWidget {
@@ -13,7 +14,7 @@ class ContactsScreen extends StatefulWidget {
 }
 
 class _ContactsScreenState extends State<ContactsScreen> {
-  static const String baseUrl = 'http://10.0.2.2:3000';
+  // baseUrl centralizado en config.dart
 
   List<dynamic> _contactosConfianza = [];
   bool _loading = true;
@@ -41,7 +42,7 @@ class _ContactsScreenState extends State<ContactsScreen> {
       _userId = usuario['id'];
 
       final response = await http.get(
-        Uri.parse('$baseUrl/users/$_userId/contactos'),
+        Uri.parse('${ApiConfig.baseUrl}/users/$_userId/contactos'),
         headers: {'Authorization': 'Bearer $_token'},
       );
 
@@ -61,7 +62,7 @@ class _ContactsScreenState extends State<ContactsScreen> {
   Future<void> _agregarContacto(String nombre, String telefono, String email) async {
     try {
       final response = await http.post(
-        Uri.parse('$baseUrl/users/$_userId/contactos'),
+        Uri.parse('${ApiConfig.baseUrl}/users/$_userId/contactos'),
         headers: {
           'Content-Type': 'application/json',
           'Authorization': 'Bearer $_token',
@@ -84,7 +85,7 @@ class _ContactsScreenState extends State<ContactsScreen> {
   Future<void> _eliminarContacto(int contactoId) async {
     try {
       await http.delete(
-        Uri.parse('$baseUrl/users/$_userId/contactos/$contactoId'),
+        Uri.parse('${ApiConfig.baseUrl}/users/$_userId/contactos/$contactoId'),
         headers: {'Authorization': 'Bearer $_token'},
       );
       _cargarContactos();

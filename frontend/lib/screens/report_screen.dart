@@ -3,7 +3,6 @@ import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:http/http.dart' as http;
 import '../theme.dart';
-import '../widgets/safe360_map.dart';
 
 class ReportScreen extends StatefulWidget {
   const ReportScreen({super.key});
@@ -20,11 +19,11 @@ class _ReportScreenState extends State<ReportScreen> {
   String? _success;
 
   final _categories = const [
-    ('Robo', Icons.warning_amber_outlined),
-    ('Acoso', Icons.report_problem_outlined),
-    ('Poca iluminación', Icons.lightbulb_outline),
-    ('Accidente vial', Icons.car_crash_outlined),
-    ('Otro', Icons.more_horiz),
+    ('Robo', Icons.warning_amber_rounded, AppColors.danger),
+    ('Acoso', Icons.report_problem_outlined, AppColors.danger),
+    ('Poca iluminación', Icons.lightbulb_outline, AppColors.warning),
+    ('Accidente vial', Icons.car_crash_outlined, Colors.purpleAccent),
+    ('Otro', Icons.more_horiz, AppColors.textSecondary),
   ];
 
   // Coordenadas de prueba — centro de Puebla
@@ -38,14 +37,21 @@ class _ReportScreenState extends State<ReportScreen> {
       return;
     }
 
-    setState(() { _loading = true; _error = null; _success = null; });
+    setState(() {
+      _loading = true;
+      _error = null;
+      _success = null;
+    });
 
     try {
       final prefs = await SharedPreferences.getInstance();
       final token = prefs.getString('token');
 
       if (token == null) {
-        setState(() { _loading = false; _error = 'Debes iniciar sesión para reportar'; });
+        setState(() {
+          _loading = false;
+          _error = 'Debes iniciar sesión para reportar';
+        });
         return;
       }
 
@@ -86,50 +92,81 @@ class _ReportScreenState extends State<ReportScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Reportar incidente')),
+      appBar: AppBar(
+        title: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: const [
+            Icon(Icons.warning_amber_rounded, color: AppColors.danger, size: 20),
+            SizedBox(width: 8),
+            Text('Reportar incidente'),
+          ],
+        ),
+      ),
       body: ListView(
-        padding: const EdgeInsets.all(20),
+        padding: const EdgeInsets.fromLTRB(20, 0, 20, 24),
         children: [
-          const Text('Categoría', style: TextStyle(color: AppColors.textSecondary)),
-          const SizedBox(height: 8),
-          Container(
-            decoration: BoxDecoration(
-              color: AppColors.surface,
-              borderRadius: BorderRadius.circular(12),
-            ),
-            child: DropdownButtonHideUnderline(
-              child: DropdownButton<String>(
-                value: _category,
-                isExpanded: true,
-                dropdownColor: AppColors.surface,
-                padding: const EdgeInsets.symmetric(horizontal: 16),
-                style: const TextStyle(color: AppColors.textPrimary),
-                items: _categories
-                    .map((c) => DropdownMenuItem(
-                          value: c.$1,
-                          child: Row(children: [
-                            Icon(c.$2, size: 18, color: AppColors.warning),
-                            const SizedBox(width: 10),
-                            Text(c.$1),
-                          ]),
-                        ))
-                    .toList(),
-                onChanged: (v) => setState(() => _category = v!),
-              ),
-            ),
+          const Center(
+            child: Text('Tu reporte nos ayuda a mantener la comunidad segura',
+                textAlign: TextAlign.center,
+                style: TextStyle(color: AppColors.textSecondary, fontSize: 12)),
           ),
           const SizedBox(height: 20),
-          const Text('Descripción', style: TextStyle(color: AppColors.textSecondary)),
-          const SizedBox(height: 8),
+          const Text('1. Categoría del incidente',
+              style: TextStyle(color: AppColors.textPrimary, fontWeight: FontWeight.w600)),
+          const SizedBox(height: 10),
+          GridView.count(
+            crossAxisCount: 2,
+            shrinkWrap: true,
+            physics: const NeverScrollableScrollPhysics(),
+            mainAxisSpacing: 10,
+            crossAxisSpacing: 10,
+            childAspectRatio: 1.6,
+            children: _categories.map((c) {
+              final selected = _category == c.$1;
+              return GestureDetector(
+                onTap: () => setState(() => _category = c.$1),
+                child: Container(
+                  decoration: BoxDecoration(
+                    color: selected ? c.$3.withOpacity(0.12) : AppColors.surface,
+                    borderRadius: BorderRadius.circular(14),
+                    border: Border.all(
+                        color: selected ? c.$3 : Colors.transparent, width: 1.5),
+                  ),
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(c.$2, color: c.$3, size: 22),
+                      const SizedBox(height: 6),
+                      Text(c.$1,
+                          textAlign: TextAlign.center,
+                          style: const TextStyle(
+                              color: AppColors.textPrimary,
+                              fontSize: 12,
+                              fontWeight: FontWeight.w500)),
+                    ],
+                  ),
+                ),
+              );
+            }).toList(),
+          ),
+          const SizedBox(height: 22),
+          const Text('2. Describe lo que pasó',
+              style: TextStyle(color: AppColors.textPrimary, fontWeight: FontWeight.w600)),
+          const SizedBox(height: 10),
           TextField(
             controller: _descController,
             maxLines: 4,
+            maxLength: 500,
             style: const TextStyle(color: AppColors.textPrimary),
             decoration: const InputDecoration(
-              hintText: 'Describe brevemente lo que pasó...',
+              hintText: 'Describe brevemente lo que pasó, cuándo ocurrió, si hay involucrados, etc.',
+              counterStyle: TextStyle(color: AppColors.textSecondary),
             ),
           ),
-          const SizedBox(height: 20),
+          const SizedBox(height: 18),
+          const Text('3. Agrega evidencia (opcional)',
+              style: TextStyle(color: AppColors.textPrimary, fontWeight: FontWeight.w600)),
+          const SizedBox(height: 10),
           OutlinedButton.icon(
             onPressed: () {},
             icon: const Icon(Icons.add_a_photo_outlined),
@@ -141,21 +178,43 @@ class _ReportScreenState extends State<ReportScreen> {
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
             ),
           ),
-          const SizedBox(height: 20),
-          const Text('Ubicación detectada', style: TextStyle(color: AppColors.textSecondary)),
           const SizedBox(height: 8),
+          Row(children: const [
+            Icon(Icons.lock_outline, size: 13, color: AppColors.textSecondary),
+            SizedBox(width: 6),
+            Text('Tu identidad se mantendrá anónima',
+                style: TextStyle(color: AppColors.textSecondary, fontSize: 11)),
+          ]),
+          const SizedBox(height: 22),
+          const Text('4. Ubicación del incidente',
+              style: TextStyle(color: AppColors.textPrimary, fontWeight: FontWeight.w600)),
+          const SizedBox(height: 10),
           ClipRRect(
             borderRadius: BorderRadius.circular(14),
-            child: SizedBox(
-              height: 140,
-              child: Safe360Map(centerLat: _latitud, centerLon: _longitud),
+            child: Container(
+              height: 150,
+              color: const Color(0xFF1A2A2E),
+              child: Stack(
+                alignment: Alignment.center,
+                children: [
+                  Icon(Icons.location_on, color: AppColors.danger.withOpacity(0.9), size: 30),
+                  Positioned(
+                    bottom: 10,
+                    right: 10,
+                    child: Text(
+                      'Vista previa de ubicación',
+                      style: TextStyle(color: Colors.white.withOpacity(0.4), fontSize: 11),
+                    ),
+                  ),
+                ],
+              ),
             ),
           ),
           if (_error != null) ...[
             const SizedBox(height: 12),
             Text(
               _error!,
-              style: const TextStyle(color: Colors.red, fontSize: 13),
+              style: const TextStyle(color: AppColors.danger, fontSize: 13),
               textAlign: TextAlign.center,
             ),
           ],
@@ -163,11 +222,11 @@ class _ReportScreenState extends State<ReportScreen> {
             const SizedBox(height: 12),
             Text(
               _success!,
-              style: const TextStyle(color: Colors.green, fontSize: 13),
+              style: const TextStyle(color: AppColors.safe, fontSize: 13),
               textAlign: TextAlign.center,
             ),
           ],
-          const SizedBox(height: 28),
+          const SizedBox(height: 26),
           ElevatedButton(
             onPressed: _loading ? null : _enviarReporte,
             child: _loading

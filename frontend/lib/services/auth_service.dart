@@ -1,10 +1,25 @@
 import 'dart:convert';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
+import '../config.dart';
 
 class AuthService {
-  // Cambia esta IP por la de tu computadora cuando pruebes en emulador
-  static const String baseUrl = 'http://localhost:3000';
+  static String get baseUrl => ApiConfig.baseUrl;
+
+  /// El backend regresa errores en 2 formatos distintos según el caso:
+  /// - Errores normales:        { error: "mensaje" }
+  /// - Errores de validación
+  ///   (express-validator):     { errores: [{ msg: "mensaje", ... }, ...] }
+  /// Este helper cubre ambos para que el mensaje de error siempre se
+  /// muestre bien en pantalla.
+  static String _extraerError(Map<String, dynamic> data, String fallback) {
+    if (data['error'] != null) return data['error'] as String;
+    if (data['errores'] is List && (data['errores'] as List).isNotEmpty) {
+      final primero = (data['errores'] as List).first;
+      if (primero is Map && primero['msg'] != null) return primero['msg'] as String;
+    }
+    return fallback;
+  }
 
   // Login con email y contraseña
   static Future<Map<String, dynamic>> login(String email, String password) async {
@@ -22,7 +37,7 @@ class AuthService {
       await prefs.setString('usuario', jsonEncode(data['usuario']));
       return {'success': true, 'data': data};
     } else {
-      return {'success': false, 'error': data['error'] ?? 'Error al iniciar sesión'};
+      return {'success': false, 'error': _extraerError(data, 'Error al iniciar sesión')};
     }
   }
 
@@ -42,7 +57,7 @@ class AuthService {
       await prefs.setString('usuario', jsonEncode(data['usuario']));
       return {'success': true, 'data': data};
     } else {
-      return {'success': false, 'error': data['error'] ?? 'Error con Google'};
+      return {'success': false, 'error': _extraerError(data, 'Error con Google')};
     }
   }
 
@@ -62,7 +77,7 @@ class AuthService {
       await prefs.setString('usuario', jsonEncode(data['usuario']));
       return {'success': true, 'data': data};
     } else {
-      return {'success': false, 'error': data['error'] ?? 'Error al registrarse'};
+      return {'success': false, 'error': _extraerError(data, 'Error al registrarse')};
     }
   }
 

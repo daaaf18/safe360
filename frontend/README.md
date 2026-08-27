@@ -1,5 +1,22 @@
 # Safe360 - Frontend (Flutter)
 
+<<<<<<< HEAD
+Pantallas rediseñadas para coincidir con las mockups aprobadas
+(Login, Home/Mapa, Reportar, Ruta segura, Chaty), adaptadas a layout
+móvil vertical. SOS, Contactos y Perfil mantienen el diseño base anterior.
+
+## Cómo correrlo
+```
+flutter pub get
+flutter run -d edge      # o: flutter run -d windows
+```
+
+## Pendiente
+- Reemplazar `lib/widgets/map_view.dart` por Mapbox real
+  (`mapbox_maps_flutter`), usando los datos de heatmap del backend
+- Conectar formularios y Chaty a los endpoints/servicios reales
+- Agregar manejo de estado (Provider/Riverpod/Bloc)
+=======
 Frontend con las 9 pantallas principales, navegación funcional, conexión
 real al backend (auth, reportes, rutas) y mapa real de Mapbox.
 
@@ -41,3 +58,4 @@ real al backend (auth, reportes, rutas) y mapa real de Mapbox.
   agregar speech-to-text al botón del micro.
 - Agregar manejo de estado (Provider, Riverpod o Bloc) en vez de datos mock
   donde todavía queden.
+>>>>>>> origin/jorge

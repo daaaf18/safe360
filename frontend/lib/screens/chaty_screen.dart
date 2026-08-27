@@ -4,13 +4,18 @@ import 'package:http/http.dart' as http;
 import 'package:permission_handler/permission_handler.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:speech_to_text/speech_to_text.dart' as stt;
+import '../config.dart';
 import '../theme.dart';
+import 'safe_route_screen.dart';
+import 'sos_screen.dart';
+import 'report_screen.dart';
 
 class _Message {
   final String text;
   final bool fromUser;
-  final bool isAlert;
-  const _Message(this.text, this.fromUser, {this.isAlert = false});
+  final String? accion; // acción sugerida por el backend, si aplica
+  final bool isAlert; // estilo visual distinto para avisos/errores
+  const _Message(this.text, this.fromUser, {this.accion, this.isAlert = false});
 }
 
 class ChatyScreen extends StatefulWidget {
@@ -21,17 +26,12 @@ class ChatyScreen extends StatefulWidget {
 }
 
 class _ChatyScreenState extends State<ChatyScreen> {
-  static const String baseUrl = 'http://localhost:3000';
-
   final List<_Message> _messages = [
-    const _Message('Voy sola a casa', true),
     const _Message(
-        'Esta ruta tiene riesgo bajo ahora, pero baja después de las 9pm. '
-        '¿Quieres que te avise si algo cambia?',
-        false,
-        isAlert: true),
-    const _Message('Sí, por favor', true),
-    const _Message('Listo, estaré monitoreando tu trayecto 💚', false),
+        'Hola, soy Chaty 💚 Podés pedirme una ruta segura, activar el SOS, '
+        'consultar el riesgo de tu zona o abrir un reporte. Tocá el '
+        'micrófono para hablarme.',
+        false),
   ];
 
   final stt.SpeechToText _speech = stt.SpeechToText();
@@ -118,7 +118,7 @@ class _ChatyScreenState extends State<ChatyScreen> {
       }
 
       final response = await http.post(
-        Uri.parse('$baseUrl/chaty'),
+        Uri.parse('${ApiConfig.baseUrl}/chaty'),
         headers: {
           'Content-Type': 'application/json',
           'Authorization': 'Bearer $token',
@@ -128,11 +128,10 @@ class _ChatyScreenState extends State<ChatyScreen> {
 
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
-        final respuesta = data['respuesta'] ?? data['mensaje'] ?? data['texto'];
+        final respuesta = data['mensaje'] ?? data['respuesta'] ?? data['texto'];
         _agregarRespuesta(
-          respuesta is String && respuesta.isNotEmpty
-              ? respuesta
-              : 'Recibido 💚',
+          respuesta is String && respuesta.isNotEmpty ? respuesta : 'Recibido 💚',
+          accion: data['accion'] as String?,
         );
       } else {
         _agregarRespuesta(
@@ -150,9 +149,9 @@ class _ChatyScreenState extends State<ChatyScreen> {
     }
   }
 
-  void _agregarRespuesta(String texto, {bool isAlert = false}) {
+  void _agregarRespuesta(String texto, {bool isAlert = false, String? accion}) {
     if (!mounted) return;
-    setState(() => _messages.add(_Message(texto, false, isAlert: isAlert)));
+    setState(() => _messages.add(_Message(texto, false, isAlert: isAlert, accion: accion)));
     _scrollAlFinal();
   }
 
@@ -170,9 +169,7 @@ class _ChatyScreenState extends State<ChatyScreen> {
 
   void _mostrarError(String mensaje) {
     if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(mensaje)),
-    );
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(mensaje)));
   }
 
   @override
@@ -182,10 +179,65 @@ class _ChatyScreenState extends State<ChatyScreen> {
     super.dispose();
   }
 
+  /// Traduce la "accion" que regresa el backend en un botón de navegación.
+  /// accion puede ser: calcular_ruta | activar_sos | consultar_zona |
+  /// abrir_reporte | responder
+  Widget? _actionButton(String? accion) {
+    switch (accion) {
+      case 'calcular_ruta':
+        return _goToButton('Ir a Ruta segura', Icons.alt_route,
+            () => Navigator.of(context).push(
+                MaterialPageRoute(builder: (_) => const SafeRouteScreen())));
+      case 'activar_sos':
+        return _goToButton('Ir a Emergencia', Icons.emergency,
+            () => Navigator.of(context).push(
+                MaterialPageRoute(builder: (_) => const SosScreen())));
+      case 'abrir_reporte':
+        return _goToButton('Ir a Reportar', Icons.warning_amber_rounded,
+            () => Navigator.of(context).push(
+                MaterialPageRoute(builder: (_) => const ReportScreen())));
+      default:
+        return null; // 'responder' y 'consultar_zona' se quedan como texto
+    }
+  }
+
+  Widget _goToButton(String label, IconData icon, VoidCallback onTap) {
+    return Padding(
+      padding: const EdgeInsets.only(top: 6),
+      child: OutlinedButton.icon(
+        onPressed: onTap,
+        icon: Icon(icon, size: 16),
+        label: Text(label),
+        style: OutlinedButton.styleFrom(
+          minimumSize: const Size(0, 36),
+          padding: const EdgeInsets.symmetric(horizontal: 14),
+          side: const BorderSide(color: AppColors.safe),
+          foregroundColor: AppColors.safe,
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Chaty')),
+      appBar: AppBar(
+        title: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: const [
+            Icon(Icons.shield, color: AppColors.safe, size: 20),
+            SizedBox(width: 8),
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('Chaty', style: TextStyle(fontSize: 16)),
+                Text('Tu asistente de seguridad',
+                    style: TextStyle(fontSize: 10, color: AppColors.textSecondary)),
+              ],
+            ),
+          ],
+        ),
+      ),
       body: Column(
         children: [
           Expanded(
@@ -245,26 +297,33 @@ class _ChatyScreenState extends State<ChatyScreen> {
   Widget _bubble(_Message m) {
     final align = m.fromUser ? Alignment.centerRight : Alignment.centerLeft;
     final color = m.isAlert
-        ? AppColors.warning.withOpacity(0.18)
-        : m.fromUser
-            ? AppColors.safe
-            : AppColors.surface;
-    final textColor = m.fromUser ? Colors.white : AppColors.textPrimary;
+        ? AppColors.warning.withOpacity(0.15)
+        : (m.fromUser ? AppColors.safe : AppColors.surface);
+    final textColor = m.isAlert
+        ? AppColors.warning
+        : (m.fromUser ? Colors.white : AppColors.textPrimary);
+    final action = m.fromUser ? null : _actionButton(m.accion);
 
     return Align(
       alignment: align,
       child: Container(
         margin: const EdgeInsets.symmetric(vertical: 6),
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
         constraints: const BoxConstraints(maxWidth: 280),
         decoration: BoxDecoration(
           color: color,
           borderRadius: BorderRadius.circular(16),
           border: m.isAlert
-              ? Border.all(color: AppColors.warning.withOpacity(0.6))
+              ? Border.all(color: AppColors.warning.withOpacity(0.5))
               : null,
         ),
-        child: Text(m.text, style: TextStyle(color: textColor)),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(m.text, style: TextStyle(color: textColor, fontSize: 13)),
+            if (action != null) action,
+          ],
+        ),
       ),
     );
   }

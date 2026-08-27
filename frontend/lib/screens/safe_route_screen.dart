@@ -3,7 +3,6 @@ import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:http/http.dart' as http;
 import '../theme.dart';
-import '../widgets/safe360_map.dart';
 
 class SafeRouteScreen extends StatefulWidget {
   const SafeRouteScreen({super.key});
@@ -34,14 +33,21 @@ class _SafeRouteScreenState extends State<SafeRouteScreen> {
       return;
     }
 
-    setState(() { _loading = true; _error = null; _ruta = null; });
+    setState(() {
+      _loading = true;
+      _error = null;
+      _ruta = null;
+    });
 
     try {
       final prefs = await SharedPreferences.getInstance();
       final token = prefs.getString('token');
 
       if (token == null) {
-        setState(() { _loading = false; _error = 'Debes iniciar sesión'; });
+        setState(() {
+          _loading = false;
+          _error = 'Debes iniciar sesión';
+        });
         return;
       }
 
@@ -77,15 +83,42 @@ class _SafeRouteScreenState extends State<SafeRouteScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final trustScore = _ruta?['trust_score_promedio'] ?? 8.2;
-    final nivelRiesgo = trustScore >= 7 ? 'Riesgo bajo' : trustScore >= 4 ? 'Riesgo medio' : 'Riesgo alto';
-    final colorScore = trustScore >= 7 ? AppColors.safe : trustScore >= 4 ? AppColors.warning : AppColors.danger;
+    final trustScore = (_ruta?['trust_score_promedio'] as num?)?.toDouble();
+    final nivelRiesgo = _ruta?['nivel_riesgo'] as String? ??
+        (trustScore == null
+            ? null
+            : trustScore >= 7
+                ? 'Riesgo bajo'
+                : trustScore >= 4
+                    ? 'Riesgo medio'
+                    : 'Riesgo alto');
+    final colorScore = trustScore == null
+        ? AppColors.textSecondary
+        : trustScore >= 7
+            ? AppColors.safe
+            : trustScore >= 4
+                ? AppColors.warning
+                : AppColors.danger;
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Ruta segura')),
+      appBar: AppBar(
+        title: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: const [
+            Icon(Icons.alt_route, color: AppColors.safe, size: 20),
+            SizedBox(width: 8),
+            Text('Ruta segura'),
+          ],
+        ),
+      ),
       body: ListView(
-        padding: const EdgeInsets.all(20),
+        padding: const EdgeInsets.fromLTRB(20, 0, 20, 24),
         children: [
+          const Center(
+            child: Text('Planifica tu camino más seguro',
+                style: TextStyle(color: AppColors.textSecondary, fontSize: 12)),
+          ),
+          const SizedBox(height: 18),
           TextField(
             controller: _origenCtrl,
             style: const TextStyle(color: AppColors.textPrimary),
@@ -118,74 +151,174 @@ class _SafeRouteScreenState extends State<SafeRouteScreen> {
             const SizedBox(height: 10),
             Text(
               _error!,
-              style: const TextStyle(color: Colors.red, fontSize: 13),
+              style: const TextStyle(color: AppColors.danger, fontSize: 13),
               textAlign: TextAlign.center,
             ),
           ],
-          const SizedBox(height: 20),
+          const SizedBox(height: 18),
           ClipRRect(
             borderRadius: BorderRadius.circular(16),
-            child: SizedBox(
-              height: 260,
-              child: Safe360Map(
-                showRoute: true,
-                centerLat: (_origenLat + _destinoLat) / 2,
-                centerLon: (_origenLon + _destinoLon) / 2,
-                routeOriginLat: _origenLat,
-                routeOriginLon: _origenLon,
-                routeDestLat: _destinoLat,
-                routeDestLon: _destinoLon,
-              ),
-            ),
-          ),
-          const SizedBox(height: 20),
-          Card(
-            child: Padding(
-              padding: const EdgeInsets.all(16),
-              child: Row(
+            child: Container(
+              height: 230,
+              color: const Color(0xFF1A2A2E),
+              child: Stack(
                 children: [
-                  CircleAvatar(
-                    backgroundColor: colorScore,
-                    child: const Icon(Icons.shield, color: Colors.white),
+                  const Center(
+                    child: Icon(Icons.alt_route, color: Colors.white38, size: 40),
                   ),
-                  const SizedBox(width: 14),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        const Text(
-                          'TrustScore de la ruta',
-                          style: TextStyle(
-                            color: AppColors.textPrimary,
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
-                        Text(
-                          '$nivelRiesgo en horario actual',
-                          style: const TextStyle(color: AppColors.textSecondary),
-                        ),
-                      ],
+                  Positioned(
+                    left: 10,
+                    bottom: 10,
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                      decoration: BoxDecoration(
+                        color: AppColors.surface.withOpacity(0.92),
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                      child: const Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text('Riesgo en la ruta',
+                              style: TextStyle(color: AppColors.textPrimary, fontSize: 10)),
+                          SizedBox(height: 4),
+                          _LegendDot(color: AppColors.safe, label: 'Bajo'),
+                          _LegendDot(color: AppColors.warning, label: 'Moderado'),
+                          _LegendDot(color: AppColors.danger, label: 'Alto'),
+                        ],
+                      ),
                     ),
                   ),
-                  Text(
-                    '${trustScore.toStringAsFixed(1)}/10',
-                    style: TextStyle(color: colorScore, fontWeight: FontWeight.bold),
+                  Positioned(
+                    bottom: 10,
+                    right: 10,
+                    child: Text(
+                      'Ver mapa completo en la pestaña Mapa',
+                      style: TextStyle(color: Colors.white.withOpacity(0.4), fontSize: 10),
+                    ),
                   ),
                 ],
               ),
             ),
           ),
-          const SizedBox(height: 16),
-          OutlinedButton(
-            onPressed: () {},
-            style: OutlinedButton.styleFrom(
-              minimumSize: const Size.fromHeight(52),
-              foregroundColor: AppColors.textPrimary,
-              side: const BorderSide(color: AppColors.surfaceLight),
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+          const SizedBox(height: 18),
+          if (_ruta != null) ...[
+            Card(
+              child: Padding(
+                padding: const EdgeInsets.all(16),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        CircleAvatar(
+                          backgroundColor: colorScore.withOpacity(0.15),
+                          child: Icon(Icons.shield, color: colorScore),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              const Text('TrustScore de la ruta',
+                                  style: TextStyle(color: AppColors.textSecondary, fontSize: 12)),
+                              Text(nivelRiesgo ?? '—',
+                                  style: const TextStyle(color: AppColors.textPrimary, fontSize: 12)),
+                            ],
+                          ),
+                        ),
+                        Text(
+                          trustScore != null ? '${trustScore.toStringAsFixed(1)}/10' : '—',
+                          style: TextStyle(
+                              color: colorScore, fontWeight: FontWeight.bold, fontSize: 18),
+                        ),
+                      ],
+                    ),
+                    const Divider(height: 28, color: AppColors.surfaceLight),
+                    _stat('Reportes en la zona', _ruta?['reportes_en_zona']),
+                    _stat('Reportes graves', _ruta?['reportes_graves']),
+                    _stat('Luminarias fundidas', _ruta?['luminarias_fundidas']),
+                    _stat('Distancia', _ruta?['distancia_metros'] != null
+                        ? '${((_ruta!['distancia_metros'] as num) / 1000).toStringAsFixed(1)} km'
+                        : null),
+                  ],
+                ),
+              ),
             ),
-            child: const Text('Ver ruta alternativa'),
-          ),
+            if (_ruta?['mensaje'] != null) ...[
+              const SizedBox(height: 12),
+              Container(
+                padding: const EdgeInsets.all(14),
+                decoration: BoxDecoration(
+                  color: AppColors.surface,
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Row(
+                  children: [
+                    const Icon(Icons.info_outline, size: 16, color: AppColors.textSecondary),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Text(_ruta!['mensaje'],
+                          style: const TextStyle(color: AppColors.textSecondary, fontSize: 12)),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+            const SizedBox(height: 14),
+            OutlinedButton(
+              onPressed: () {},
+              style: OutlinedButton.styleFrom(
+                minimumSize: const Size.fromHeight(52),
+                foregroundColor: AppColors.textPrimary,
+                side: const BorderSide(color: AppColors.surfaceLight),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+              ),
+              child: const Text('Ver ruta alternativa'),
+            ),
+          ] else
+            const Padding(
+              padding: EdgeInsets.symmetric(vertical: 30),
+              child: Center(
+                child: Text('Ingresa origen y destino, luego calcula tu ruta segura',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(color: AppColors.textSecondary, fontSize: 12)),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
+  Widget _stat(String label, dynamic value) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 10),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          Text(label, style: const TextStyle(color: AppColors.textSecondary, fontSize: 12)),
+          Text(value?.toString() ?? '—',
+              style: const TextStyle(color: AppColors.textPrimary, fontSize: 12, fontWeight: FontWeight.w600)),
+        ],
+      ),
+    );
+  }
+}
+
+class _LegendDot extends StatelessWidget {
+  final Color color;
+  final String label;
+  const _LegendDot({required this.color, required this.label});
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(top: 2),
+      child: Row(
+        children: [
+          Container(
+              width: 6, height: 6, decoration: BoxDecoration(color: color, shape: BoxShape.circle)),
+          const SizedBox(width: 5),
+          Text(label, style: const TextStyle(color: AppColors.textSecondary, fontSize: 9)),
         ],
       ),
     );
