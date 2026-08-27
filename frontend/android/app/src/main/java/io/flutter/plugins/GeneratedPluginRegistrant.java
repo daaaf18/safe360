@@ -16,6 +16,11 @@ public final class GeneratedPluginRegistrant {
   private static final String TAG = "GeneratedPluginRegistrant";
   public static void registerWith(@NonNull FlutterEngine flutterEngine) {
     try {
+      flutterEngine.getPlugins().add(new com.llfbandit.app_links.AppLinksPlugin());
+    } catch (Exception e) {
+      Log.e(TAG, "Error registering plugin app_links, com.llfbandit.app_links.AppLinksPlugin", e);
+    }
+    try {
       flutterEngine.getPlugins().add(new co.quis.flutter_contacts.FlutterContactsPlugin());
     } catch (Exception e) {
       Log.e(TAG, "Error registering plugin flutter_contacts, co.quis.flutter_contacts.FlutterContactsPlugin", e);
@@ -36,6 +41,11 @@ public final class GeneratedPluginRegistrant {
       Log.e(TAG, "Error registering plugin google_sign_in_android, io.flutter.plugins.googlesignin.GoogleSignInPlugin", e);
     }
     try {
+      flutterEngine.getPlugins().add(new io.flutter.plugins.imagepicker.ImagePickerPlugin());
+    } catch (Exception e) {
+      Log.e(TAG, "Error registering plugin image_picker_android, io.flutter.plugins.imagepicker.ImagePickerPlugin", e);
+    }
+    try {
       flutterEngine.getPlugins().add(new com.mapbox.maps.mapbox_maps.MapboxMapsPlugin());
     } catch (Exception e) {
       Log.e(TAG, "Error registering plugin mapbox_maps_flutter, com.mapbox.maps.mapbox_maps.MapboxMapsPlugin", e);
@@ -54,6 +64,11 @@ public final class GeneratedPluginRegistrant {
       flutterEngine.getPlugins().add(new com.csdcorp.speech_to_text.SpeechToTextPlugin());
     } catch (Exception e) {
       Log.e(TAG, "Error registering plugin speech_to_text, com.csdcorp.speech_to_text.SpeechToTextPlugin", e);
+    }
+    try {
+      flutterEngine.getPlugins().add(new io.flutter.plugins.urllauncher.UrlLauncherPlugin());
+    } catch (Exception e) {
+      Log.e(TAG, "Error registering plugin url_launcher_android, io.flutter.plugins.urllauncher.UrlLauncherPlugin", e);
     }
   }
 }
