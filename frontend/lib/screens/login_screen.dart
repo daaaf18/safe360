@@ -24,10 +24,11 @@ class _LoginScreenState extends State<LoginScreen> {
   );
 
   void _goHome() {
-    Navigator.of(context).pushReplacement(
-      MaterialPageRoute(builder: (_) => const MainNavigation()),
-    );
-  }
+  Navigator.of(context).pushAndRemoveUntil(
+    MaterialPageRoute(builder: (_) => const MainNavigation()),
+    (route) => false,
+  );
+}
 
   Future<void> _login() async {
     setState(() {
@@ -213,7 +214,10 @@ class _LoginScreenState extends State<LoginScreen> {
                   ),
                   const SizedBox(height: 12),
                   OutlinedButton.icon(
-                    onPressed: _goHome,
+                    onPressed: () async {
+                      await AuthService.loginAsGuest();
+                      _goHome();
+                    },
                     icon: const Icon(Icons.people_outline, size: 18),
                     label: const Text('Continuar como invitado'),
                     style: OutlinedButton.styleFrom(

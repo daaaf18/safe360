@@ -148,4 +148,15 @@ frontend/.dart_tool/
 frontend/.flutter-plugins
 frontend/.flutter-plugins-dependencies
 frontend/*.iml
-frontend/.idea/
+frontend/.idea/esquema_safe360.sql
+frontend/.vs/
+02-mapbox-integracion-jorge.patch
+frontend/android/build/
+esquema_safe360.sql
+frontend/android/local.properties
+frontend/android/.gradle/
+frontend/android/app/.gradle/
+frontend/android/gradle/
+frontend/android/gradlew
+frontend/android/gradlew.bat
+frontend/android/app/src/main/java/io/flutter/plugins/GeneratedPluginRegistrant.java

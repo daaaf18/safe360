@@ -72,7 +72,27 @@ const calcularRutaSegura = async (req, res) => {
 
     const nivelRiesgo = trustScore >= 7 ? 'bajo' : trustScore >= 4 ? 'medio' : 'alto';
 
-    // 5. Guardar la ruta en BD
+        // 5. Generar geometría de la ruta (puntos cada 100m)
+    const geometriaResult = await pool.query(
+      `SELECT ST_X(dp.geom) as lon, ST_Y(dp.geom) as lat
+       FROM ST_DumpPoints(
+         ST_Segmentize(
+           ST_MakeLine(
+             ST_SetSRID(ST_MakePoint($1, $2), 4326),
+             ST_SetSRID(ST_MakePoint($3, $4), 4326)
+           )::geography,
+           100
+         )::geometry
+       ) AS dp(path, geom)`,
+      [origen_lon, origen_lat, destino_lon, destino_lat]
+    );
+
+    const puntos = geometriaResult.rows.map(r => ({
+      lat: parseFloat(r.lat),
+      lon: parseFloat(r.lon)
+    }));
+
+    // 6. Guardar la ruta en BD
     await pool.query(
       `INSERT INTO rutas (usuario_id, origen, destino, trust_score_promedio)
        VALUES ($1, ST_SetSRID(ST_MakePoint($2, $3), 4326),
@@ -83,6 +103,7 @@ const calcularRutaSegura = async (req, res) => {
     res.json({
       origen: { lat: origen_lat, lon: origen_lon },
       destino: { lat: destino_lat, lon: destino_lon },
+      puntos,
       distancia_metros: Math.round(distanciaMetros),
       trust_score_promedio: trustScore,
       nivel_riesgo: nivelRiesgo,

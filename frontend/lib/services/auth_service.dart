@@ -55,6 +55,7 @@ class AuthService {
       final prefs = await SharedPreferences.getInstance();
       await prefs.setString('token', data['token']);
       await prefs.setString('usuario', jsonEncode(data['usuario']));
+      await prefs.remove('isGuest');
       return {'success': true, 'data': data};
     } else {
       return {'success': false, 'error': _extraerError(data, 'Error con Google')};
@@ -75,17 +76,31 @@ class AuthService {
       final prefs = await SharedPreferences.getInstance();
       await prefs.setString('token', data['token']);
       await prefs.setString('usuario', jsonEncode(data['usuario']));
+      await prefs.remove('isGuest');
       return {'success': true, 'data': data};
     } else {
       return {'success': false, 'error': _extraerError(data, 'Error al registrarse')};
     }
   }
 
+  // Entrar como invitado
+static Future<void> loginAsGuest() async {
+  final prefs = await SharedPreferences.getInstance();
+  await prefs.setBool('isGuest', true);
+}
+
+// Verificar si es invitado
+static Future<bool> isGuest() async {
+  final prefs = await SharedPreferences.getInstance();
+  return prefs.getBool('isGuest') ?? false;
+}
+
   // Cerrar sesión
   static Future<void> logout() async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.remove('token');
     await prefs.remove('usuario');
+    await prefs.remove('isGuest');
   }
 
   // Obtener token guardado
