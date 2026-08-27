@@ -153,3 +153,9 @@ frontend/.vs/
 02-mapbox-integracion-jorge.patch
 frontend/android/build/
 esquema_safe360.sql
+frontend/android/local.properties
+frontend/android/.gradle/
+frontend/android/app/.gradle/
+frontend/android/gradle/
+frontend/android/gradlew
+frontend/android/gradlew.bat
