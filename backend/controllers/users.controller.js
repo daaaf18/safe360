@@ -81,12 +81,12 @@ const getContactos = async (req, res) => {
 // POST /users/:id/contactos — Agregar contacto
 const agregarContacto = async (req, res) => {
   const { id } = req.params;
-  const { nombre, telefono, email } = req.body;
+  const { nombre, telefono } = req.body;
 
   try {
     const resultado = await pool.query(
-      'INSERT INTO contactos_confianza (usuario_id, nombre, telefono, email) VALUES ($1, $2, $3, $4) RETURNING *',
-      [id, nombre, telefono, email]
+      'INSERT INTO contactos_confianza (usuario_id, nombre, telefono) VALUES ($1, $2, $3) RETURNING *',
+      [id, nombre, telefono]
     );
 
     res.status(201).json(resultado.rows[0]);
@@ -99,12 +99,12 @@ const agregarContacto = async (req, res) => {
 // PUT /users/:id/contactos/:contactoId — Editar contacto
 const editarContacto = async (req, res) => {
   const { id, contactoId } = req.params;
-  const { nombre, telefono, email } = req.body;
+  const { nombre, telefono } = req.body;
 
   try {
     const resultado = await pool.query(
-      'UPDATE contactos_confianza SET nombre = $1, telefono = $2, email = $3 WHERE id = $4 AND usuario_id = $5 RETURNING *',
-      [nombre, telefono, email, contactoId, id]
+      'UPDATE contactos_confianza SET nombre = $1, telefono = $2 WHERE id = $3 AND usuario_id = $4 RETURNING *',
+      [nombre, telefono, contactoId, id]
     );
 
     if (resultado.rows.length === 0) {

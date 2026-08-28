@@ -8,10 +8,6 @@ const validarRegistro = [
     .isLength({ min: 2, max: 50 }).withMessage('El nombre debe tener entre 2 y 50 caracteres')
     .matches(/^[a-zA-ZáéíóúÁÉÍÓÚñÑ\s]+$/).withMessage('El nombre solo puede contener letras y espacios')
     .trim(),
-  body('email')
-    .notEmpty().withMessage('El email es obligatorio')
-    .isEmail().withMessage('El email no tiene un formato válido')
-    .normalizeEmail(),
   body('password')
     .notEmpty().withMessage('La contraseña es obligatoria')
     .isLength({ min: 8 }).withMessage('La contraseña debe tener al menos 8 caracteres')
