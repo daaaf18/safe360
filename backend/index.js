@@ -13,6 +13,7 @@ const sosRoutes = require('./routes/sos.routes');
 const rutasRoutes = require('./routes/rutas.routes');
 const zonasRoutes = require('./routes/zonas.routes');
 const chatyRoutes = require('./routes/chaty.routes');
+const transporteRoutes = require('./routes/transporte.routes');
 
 const app = express();
 
@@ -63,6 +64,7 @@ app.use('/sos', limiterSOS, sosRoutes);
 app.use('/rutas', rutasRoutes);
 app.use('/zonas', zonasRoutes);
 app.use('/chaty', chatyRoutes);
+app.use('/rutas/transporte', transporteRoutes);
 
 // ── Ruta de prueba ────────────────────────────────────────
 app.get('/', (req, res) => {
