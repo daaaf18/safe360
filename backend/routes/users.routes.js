@@ -3,6 +3,7 @@ const router = express.Router();
 const usersController = require('../controllers/users.controller');
 const { getStats } = require('../controllers/stats.controller');
 const { verificarToken } = require('../middleware/auth.middleware');
+const { validarContacto, manejarErrores } = require('../middleware/validacion.middleware');
 
 // GET /users/:id — Ver perfil de usuario
 router.get('/:id', verificarToken, usersController.getPerfil);
@@ -20,10 +21,10 @@ router.get('/:id/contactos', verificarToken, usersController.getContactos);
 router.get('/:id/stats', verificarToken, getStats);
 
 // POST /users/:id/contactos — Agregar contacto de confianza
-router.post('/:id/contactos', verificarToken, usersController.agregarContacto);
+router.post('/:id/contactos', verificarToken, validarContacto, manejarErrores, usersController.agregarContacto);
 
 // PUT /users/:id/contactos/:contactoId — Editar contacto
-router.put('/:id/contactos/:contactoId', verificarToken, usersController.editarContacto);
+router.put('/:id/contactos/:contactoId', verificarToken, validarContacto, manejarErrores, usersController.editarContacto);
 
 // DELETE /users/:id/contactos/:contactoId — Eliminar contacto
 router.delete('/:id/contactos/:contactoId', verificarToken, usersController.eliminarContacto);
