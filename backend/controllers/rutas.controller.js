@@ -100,6 +100,18 @@ const calcularRutaSegura = async (req, res) => {
       [usuario_id, origen_lon, origen_lat, destino_lon, destino_lat, trustScore]
     );
 
+        // Verificar si es una ruta frecuente del usuario
+    const rutasFrecuentesResult = await pool.query(
+      `SELECT COUNT(*) as total FROM rutas
+       WHERE usuario_id = $1
+       AND ST_DWithin(origen::geography, ST_SetSRID(ST_MakePoint($2, $3), 4326)::geography, 200)
+       AND ST_DWithin(destino::geography, ST_SetSRID(ST_MakePoint($4, $5), 4326)::geography, 200)`,
+      [usuario_id, origen_lon, origen_lat, destino_lon, destino_lat]
+    );
+
+    const vecesUsada = parseInt(rutasFrecuentesResult.rows[0].total);
+    const esRutaFrecuente = vecesUsada >= 3;
+
     res.json({
       origen: { lat: origen_lat, lon: origen_lon },
       destino: { lat: destino_lat, lon: destino_lon },
@@ -115,6 +127,11 @@ const calcularRutaSegura = async (req, res) => {
         : trustScore >= 4
           ? 'Precaución. Hay incidentes reportados en esta zona.'
           : 'Alto riesgo. Se recomienda una ruta alternativa.',
+                ruta_frecuente: esRutaFrecuente,
+      veces_usada: vecesUsada,
+      mensaje_frecuente: esRutaFrecuente
+        ? `Usas esta ruta frecuentemente (${vecesUsada} veces). Chaty monitoreará el riesgo en tiempo real.`
+        : null,
     });
 
   } catch (error) {

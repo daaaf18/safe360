@@ -116,6 +116,29 @@ const actualizarEstado = async (req, res) => {
       return res.status(404).json({ error: 'Reporte no encontrado' });
     }
 
+    const reporte = resultado.rows[0];
+
+    // Ajustar historial_confianza del reportante según el resultado
+    if (estado === 'rechazado') {
+      // Reporte falso — penalizar al usuario (mínimo 0.1)
+      await pool.query(
+        `UPDATE usuarios 
+         SET historial_confianza = GREATEST(0.1, historial_confianza - 0.1)
+         WHERE id = $1`,
+        [reporte.usuario_id]
+      );
+      console.log(`⬇️ Confianza reducida para usuario ${reporte.usuario_id} por reporte rechazado`);
+    } else if (estado === 'verificado') {
+      // Reporte verdadero — premiar al usuario (máximo 1.0)
+      await pool.query(
+        `UPDATE usuarios 
+         SET historial_confianza = LEAST(1.0, historial_confianza + 0.05)
+         WHERE id = $1`,
+        [reporte.usuario_id]
+      );
+      console.log(`⬆️ Confianza aumentada para usuario ${reporte.usuario_id} por reporte verificado`);
+    }
+
     res.json(resultado.rows[0]);
   } catch (error) {
     console.error('Error en actualizarEstado:', error.message);
