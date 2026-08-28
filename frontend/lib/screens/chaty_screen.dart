@@ -133,6 +133,12 @@ class _ChatyScreenState extends State<ChatyScreen> {
           respuesta is String && respuesta.isNotEmpty ? respuesta : 'Recibido 💚',
           accion: data['accion'] as String?,
         );
+        // Si es emergencia inmediata, navegar al SOS automáticamente
+      if (data['emergencia_inmediata'] == true && mounted) {
+        Navigator.of(context).push(
+        MaterialPageRoute(builder: (_) => const SosScreen()),
+       );
+      }
       } else {
         _agregarRespuesta(
           'No pude procesar eso ahora mismo. Intentá de nuevo en un momento.',
@@ -196,7 +202,11 @@ class _ChatyScreenState extends State<ChatyScreen> {
         return _goToButton('Ir a Reportar', Icons.warning_amber_rounded,
             () => Navigator.of(context).push(
                 MaterialPageRoute(builder: (_) => const ReportScreen())));
-      default:
+      case 'modo_transporte':
+        return _goToButton('Activar modo escolta', Icons.directions_car,
+            () => Navigator.of(context).push(
+                MaterialPageRoute(builder: (_) => const SosScreen())));
+        default:
         return null; // 'responder' y 'consultar_zona' se quedan como texto
     }
   }
