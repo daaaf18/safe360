@@ -1,7 +1,10 @@
 import 'dart:convert';
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:http/http.dart' as http;
+import 'package:image_picker/image_picker.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 import '../theme.dart';
 
 class ReportScreen extends StatefulWidget {
@@ -18,6 +21,14 @@ class _ReportScreenState extends State<ReportScreen> {
   String? _error;
   String? _success;
 
+  // --- Evidencia (foto/video) ---
+  final _picker = ImagePicker();
+  final _supabase = Supabase.instance.client;
+  XFile? _pickedFile;
+  bool _isVideo = false;
+  bool _uploadingEvidencia = false;
+  String? _evidenciaUrl;
+
   final _categories = const [
     ('Robo', Icons.warning_amber_rounded, AppColors.danger),
     ('Acoso', Icons.report_problem_outlined, AppColors.danger),
@@ -26,10 +37,118 @@ class _ReportScreenState extends State<ReportScreen> {
     ('Otro', Icons.more_horiz, AppColors.textSecondary),
   ];
 
-  // Coordenadas de prueba — centro de Puebla
-  // Cuando se integre geolocator, estas serán dinámicas
   final double _latitud = 19.0414;
   final double _longitud = -98.2063;
+
+  Future<void> _mostrarOpcionesEvidencia() async {
+    await showModalBottomSheet(
+      context: context,
+      backgroundColor: AppColors.surface,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(18)),
+      ),
+      builder: (ctx) {
+        return SafeArea(
+          child: Wrap(
+            children: [
+              ListTile(
+                leading: const Icon(Icons.photo_camera_outlined, color: AppColors.textPrimary),
+                title: const Text('Tomar foto', style: TextStyle(color: AppColors.textPrimary)),
+                onTap: () {
+                  Navigator.pop(ctx);
+                  _seleccionarArchivo(esVideo: false, source: ImageSource.camera);
+                },
+              ),
+              ListTile(
+                leading: const Icon(Icons.photo_library_outlined, color: AppColors.textPrimary),
+                title: const Text('Elegir foto de galería', style: TextStyle(color: AppColors.textPrimary)),
+                onTap: () {
+                  Navigator.pop(ctx);
+                  _seleccionarArchivo(esVideo: false, source: ImageSource.gallery);
+                },
+              ),
+              ListTile(
+                leading: const Icon(Icons.videocam_outlined, color: AppColors.textPrimary),
+                title: const Text('Grabar video', style: TextStyle(color: AppColors.textPrimary)),
+                onTap: () {
+                  Navigator.pop(ctx);
+                  _seleccionarArchivo(esVideo: true, source: ImageSource.camera);
+                },
+              ),
+              ListTile(
+                leading: const Icon(Icons.video_library_outlined, color: AppColors.textPrimary),
+                title: const Text('Elegir video de galería', style: TextStyle(color: AppColors.textPrimary)),
+                onTap: () {
+                  Navigator.pop(ctx);
+                  _seleccionarArchivo(esVideo: true, source: ImageSource.gallery);
+                },
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  Future<void> _seleccionarArchivo({required bool esVideo, required ImageSource source}) async {
+    final XFile? file = esVideo
+        ? await _picker.pickVideo(source: source)
+        : await _picker.pickImage(source: source, imageQuality: 80);
+
+    if (file == null) return;
+
+    setState(() {
+      _pickedFile = file;
+      _isVideo = esVideo;
+      _error = null;
+    });
+
+    await _subirEvidencia(file, esVideo);
+  }
+
+  Future<void> _subirEvidencia(XFile file, bool esVideo) async {
+    setState(() {
+      _uploadingEvidencia = true;
+      _error = null;
+    });
+
+    try {
+      final bytes = await file.readAsBytes();
+      final ext = file.path.split('.').last;
+      final nombreArchivo =
+          '${DateTime.now().millisecondsSinceEpoch}_${file.name}'.replaceAll(' ', '_');
+      final path = 'reportes/$nombreArchivo';
+
+      await _supabase.storage.from('evidencias').uploadBinary(
+            path,
+            bytes,
+            fileOptions: FileOptions(
+              contentType: esVideo ? 'video/$ext' : 'image/$ext',
+              upsert: false,
+            ),
+          );
+
+      final publicUrl = _supabase.storage.from('evidencias').getPublicUrl(path);
+
+      setState(() {
+        _evidenciaUrl = publicUrl;
+        _uploadingEvidencia = false;
+      });
+    } catch (e) {
+      setState(() {
+        _uploadingEvidencia = false;
+        _error = 'No se pudo subir la evidencia';
+        _pickedFile = null;
+      });
+    }
+  }
+
+  void _quitarEvidencia() {
+    setState(() {
+      _pickedFile = null;
+      _evidenciaUrl = null;
+    });
+  }
 
   Future<void> _enviarReporte() async {
     if (_descController.text.trim().isEmpty) {
@@ -66,6 +185,7 @@ class _ReportScreenState extends State<ReportScreen> {
           'descripcion': _descController.text.trim(),
           'latitud': _latitud,
           'longitud': _longitud,
+          'evidencia_url': _evidenciaUrl,
         }),
       );
 
@@ -76,6 +196,8 @@ class _ReportScreenState extends State<ReportScreen> {
           _success = '¡Reporte enviado correctamente!';
           _descController.clear();
           _category = 'Robo';
+          _pickedFile = null;
+          _evidenciaUrl = null;
         });
       } else {
         final data = jsonDecode(response.body);
@@ -87,6 +209,64 @@ class _ReportScreenState extends State<ReportScreen> {
         _error = 'Error de conexión con el servidor';
       });
     }
+  }
+
+  Widget _buildEvidenciaBox() {
+    if (_pickedFile == null) {
+      return OutlinedButton.icon(
+        onPressed: _mostrarOpcionesEvidencia,
+        icon: const Icon(Icons.add_a_photo_outlined),
+        label: const Text('Adjuntar foto o video'),
+        style: OutlinedButton.styleFrom(
+          minimumSize: const Size.fromHeight(52),
+          foregroundColor: AppColors.textPrimary,
+          side: const BorderSide(color: AppColors.surfaceLight),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+        ),
+      );
+    }
+
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: AppColors.surface,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: AppColors.surfaceLight),
+      ),
+      child: Row(
+        children: [
+          ClipRRect(
+            borderRadius: BorderRadius.circular(10),
+            child: _isVideo
+                ? Container(
+                    width: 48,
+                    height: 48,
+                    color: Colors.black26,
+                    child: const Icon(Icons.videocam, color: Colors.white70),
+                  )
+                : Image.file(File(_pickedFile!.path), width: 48, height: 48, fit: BoxFit.cover),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Text(
+              _uploadingEvidencia ? 'Subiendo evidencia...' : 'Evidencia lista para enviar',
+              style: const TextStyle(color: AppColors.textPrimary, fontSize: 13),
+            ),
+          ),
+          if (_uploadingEvidencia)
+            const SizedBox(
+              width: 18,
+              height: 18,
+              child: CircularProgressIndicator(strokeWidth: 2),
+            )
+          else
+            IconButton(
+              icon: const Icon(Icons.close, color: AppColors.textSecondary, size: 20),
+              onPressed: _quitarEvidencia,
+            ),
+        ],
+      ),
+    );
   }
 
   @override
@@ -167,17 +347,7 @@ class _ReportScreenState extends State<ReportScreen> {
           const Text('3. Agrega evidencia (opcional)',
               style: TextStyle(color: AppColors.textPrimary, fontWeight: FontWeight.w600)),
           const SizedBox(height: 10),
-          OutlinedButton.icon(
-            onPressed: () {},
-            icon: const Icon(Icons.add_a_photo_outlined),
-            label: const Text('Adjuntar foto o video'),
-            style: OutlinedButton.styleFrom(
-              minimumSize: const Size.fromHeight(52),
-              foregroundColor: AppColors.textPrimary,
-              side: const BorderSide(color: AppColors.surfaceLight),
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-            ),
-          ),
+          _buildEvidenciaBox(),
           const SizedBox(height: 8),
           Row(children: const [
             Icon(Icons.lock_outline, size: 13, color: AppColors.textSecondary),
@@ -228,7 +398,7 @@ class _ReportScreenState extends State<ReportScreen> {
           ],
           const SizedBox(height: 26),
           ElevatedButton(
-            onPressed: _loading ? null : _enviarReporte,
+            onPressed: (_loading || _uploadingEvidencia) ? null : _enviarReporte,
             child: _loading
                 ? const SizedBox(
                     height: 20,

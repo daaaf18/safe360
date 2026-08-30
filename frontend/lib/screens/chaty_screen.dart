@@ -9,13 +9,16 @@ import '../theme.dart';
 import 'safe_route_screen.dart';
 import 'sos_screen.dart';
 import 'report_screen.dart';
+import 'contacts_screen.dart';
 
 class _Message {
   final String text;
   final bool fromUser;
   final String? accion; // acción sugerida por el backend, si aplica
   final bool isAlert; // estilo visual distinto para avisos/errores
-  const _Message(this.text, this.fromUser, {this.accion, this.isAlert = false});
+  final DateTime time;
+  _Message(this.text, this.fromUser, {this.accion, this.isAlert = false})
+      : time = DateTime.now();
 }
 
 class ChatyScreen extends StatefulWidget {
@@ -27,15 +30,16 @@ class ChatyScreen extends StatefulWidget {
 
 class _ChatyScreenState extends State<ChatyScreen> {
   final List<_Message> _messages = [
-    const _Message(
-        'Hola, soy Chaty 💚 Podés pedirme una ruta segura, activar el SOS, '
-        'consultar el riesgo de tu zona o abrir un reporte. Tocá el '
-        'micrófono para hablarme.',
-        false),
+    _Message(
+      'Hola, soy Chaty 💚 Toca el micrófono y dime qué necesitas: calcular '
+      'una ruta segura, activar el SOS, consultar el riesgo de tu zona o '
+      'abrir un reporte.',
+      false,
+    ),
   ];
 
-  final stt.SpeechToText _speech = stt.SpeechToText();
   final ScrollController _scrollController = ScrollController();
+  final stt.SpeechToText _speech = stt.SpeechToText();
 
   bool _speechDisponible = false;
   bool _escuchando = false;
@@ -75,16 +79,12 @@ class _ChatyScreenState extends State<ChatyScreen> {
       _mostrarError('Necesito permiso de micrófono para escucharte.');
       return;
     }
-
     if (!_speechDisponible) {
       _mostrarError('El reconocimiento de voz no está disponible en este dispositivo.');
       return;
     }
 
-    setState(() {
-      _escuchando = true;
-      _textoParcial = '';
-    });
+    setState(() => _escuchando = true);
 
     await _speech.listen(
       localeId: 'es_MX',
@@ -98,10 +98,13 @@ class _ChatyScreenState extends State<ChatyScreen> {
   }
 
   Future<void> _enviarMensaje(String texto) async {
+    final textoLimpio = texto.trim();
+    if (textoLimpio.isEmpty || _enviando) return;
+
     setState(() {
-      _messages.add(_Message(texto, true));
-      _escuchando = false;
+      _messages.add(_Message(textoLimpio, true));
       _textoParcial = '';
+      _escuchando = false;
       _enviando = true;
     });
     _scrollAlFinal();
@@ -109,9 +112,10 @@ class _ChatyScreenState extends State<ChatyScreen> {
     try {
       final prefs = await SharedPreferences.getInstance();
       final token = prefs.getString('token');
+
       if (token == null) {
         _agregarRespuesta(
-          'Necesitás iniciar sesión de nuevo para hablar con Chaty.',
+          'Necesitas iniciar sesión de nuevo para hablar con Chaty.',
           isAlert: true,
         );
         return;
@@ -123,7 +127,7 @@ class _ChatyScreenState extends State<ChatyScreen> {
           'Content-Type': 'application/json',
           'Authorization': 'Bearer $token',
         },
-        body: jsonEncode({'mensaje': texto}),
+        body: jsonEncode({'mensaje': textoLimpio}),
       );
 
       if (response.statusCode == 200) {
@@ -141,13 +145,13 @@ class _ChatyScreenState extends State<ChatyScreen> {
       }
       } else {
         _agregarRespuesta(
-          'No pude procesar eso ahora mismo. Intentá de nuevo en un momento.',
+          'No pude procesar eso ahora mismo. Intenta de nuevo en un momento.',
           isAlert: true,
         );
       }
     } catch (_) {
       _agregarRespuesta(
-        'No pude conectarme con Chaty. Revisá tu conexión.',
+        'No pude conectarme con Chaty. Revisa tu conexión.',
         isAlert: true,
       );
     } finally {
@@ -185,9 +189,7 @@ class _ChatyScreenState extends State<ChatyScreen> {
     super.dispose();
   }
 
-  /// Traduce la "accion" que regresa el backend en un botón de navegación.
-  /// accion puede ser: calcular_ruta | activar_sos | consultar_zona |
-  /// abrir_reporte | responder
+  /// Traduce la "accion" del backend en un botón de navegación dentro del mensaje.
   Widget? _actionButton(String? accion) {
     switch (accion) {
       case 'calcular_ruta':
@@ -213,7 +215,7 @@ class _ChatyScreenState extends State<ChatyScreen> {
 
   Widget _goToButton(String label, IconData icon, VoidCallback onTap) {
     return Padding(
-      padding: const EdgeInsets.only(top: 6),
+      padding: const EdgeInsets.only(top: 8),
       child: OutlinedButton.icon(
         onPressed: onTap,
         icon: Icon(icon, size: 16),
@@ -227,6 +229,8 @@ class _ChatyScreenState extends State<ChatyScreen> {
       ),
     );
   }
+
+  void _accionRapida(String texto) => _enviarMensaje(texto);
 
   @override
   Widget build(BuildContext context) {
@@ -250,25 +254,84 @@ class _ChatyScreenState extends State<ChatyScreen> {
       ),
       body: Column(
         children: [
-          Expanded(
-            child: ListView(
-              controller: _scrollController,
-              padding: const EdgeInsets.all(16),
-              children: _messages.map((m) => _bubble(m)).toList(),
+          // Banner superior
+          Container(
+            margin: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+            decoration: BoxDecoration(
+              color: AppColors.surface,
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: AppColors.safe.withOpacity(0.3)),
+            ),
+            child: Row(
+              children: [
+                const Icon(Icons.shield, color: AppColors.safe, size: 18),
+                const SizedBox(width: 10),
+                const Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text('Monitoreando tu zona',
+                          style: TextStyle(
+                              color: AppColors.textPrimary,
+                              fontSize: 12,
+                              fontWeight: FontWeight.w600)),
+                      Text('Chaty está activo y disponible',
+                          style: TextStyle(color: AppColors.textSecondary, fontSize: 11)),
+                    ],
+                  ),
+                ),
+                const Icon(Icons.chevron_right, color: AppColors.textSecondary, size: 18),
+              ],
             ),
           ),
+          // Mensajes
+          Expanded(
+            child: ListView.builder(
+              controller: _scrollController,
+              padding: const EdgeInsets.all(16),
+              itemCount: _messages.length + (_enviando ? 1 : 0),
+              itemBuilder: (context, i) {
+                if (i == _messages.length) {
+                  return const Padding(
+                    padding: EdgeInsets.only(left: 4, top: 4),
+                    child: Text('Chaty está escribiendo...',
+                        style: TextStyle(color: AppColors.textSecondary, fontSize: 11)),
+                  );
+                }
+                return _bubble(_messages[i]);
+              },
+            ),
+          ),
+          // Texto parcial mientras escucha
           if (_escuchando)
             Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16),
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
               child: Text(
                 _textoParcial.isEmpty ? 'Escuchando…' : _textoParcial,
-                style: const TextStyle(
-                  color: AppColors.textSecondary,
-                  fontStyle: FontStyle.italic,
-                ),
                 textAlign: TextAlign.center,
+                style: const TextStyle(
+                    color: AppColors.textSecondary, fontSize: 12, fontStyle: FontStyle.italic),
               ),
             ),
+          // Chips de acciones rápidas
+          SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            child: Row(
+              children: [
+                _quickChip(Icons.info_outline, '¿Cómo funciona?',
+                    () => _accionRapida('¿Cómo funciona Chaty?')),
+                _quickChip(Icons.warning_amber_rounded, 'Reporte rápido',
+                    () => Navigator.of(context)
+                        .push(MaterialPageRoute(builder: (_) => const ReportScreen()))),
+                _quickChip(Icons.people_outline, 'Contactos de confianza',
+                    () => Navigator.of(context)
+                        .push(MaterialPageRoute(builder: (_) => const ContactsScreen()))),
+              ],
+            ),
+          ),
+          // Botón de micrófono
           Padding(
             padding: const EdgeInsets.all(16),
             child: Center(
@@ -281,22 +344,34 @@ class _ChatyScreenState extends State<ChatyScreen> {
                   decoration: BoxDecoration(
                     color: _escuchando ? AppColors.danger : AppColors.safe,
                     shape: BoxShape.circle,
+                    boxShadow: [
+                      BoxShadow(
+                        color: (_escuchando ? AppColors.danger : AppColors.safe)
+                            .withOpacity(0.4),
+                        blurRadius: 16,
+                        spreadRadius: 2,
+                      ),
+                    ],
                   ),
                   child: _enviando
                       ? const Padding(
-                          padding: EdgeInsets.all(20),
-                          child: CircularProgressIndicator(
-                            color: Colors.white,
-                            strokeWidth: 3,
-                          ),
+                          padding: EdgeInsets.all(22),
+                          child: CircularProgressIndicator(color: Colors.white, strokeWidth: 3),
                         )
                       : Icon(
                           _escuchando ? Icons.mic : Icons.mic_none,
                           color: Colors.white,
-                          size: 32,
+                          size: 30,
                         ),
                 ),
               ),
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.only(bottom: 12),
+            child: Text(
+              _escuchando ? 'Toca para detener' : 'Mantén presionado o toca para hablar',
+              style: const TextStyle(color: AppColors.textSecondary, fontSize: 11),
             ),
           ),
         ],
@@ -313,6 +388,8 @@ class _ChatyScreenState extends State<ChatyScreen> {
         ? AppColors.warning
         : (m.fromUser ? Colors.white : AppColors.textPrimary);
     final action = m.fromUser ? null : _actionButton(m.accion);
+    final time =
+        '${m.time.hour.toString().padLeft(2, '0')}:${m.time.minute.toString().padLeft(2, '0')}';
 
     return Align(
       alignment: align,
@@ -323,16 +400,50 @@ class _ChatyScreenState extends State<ChatyScreen> {
         decoration: BoxDecoration(
           color: color,
           borderRadius: BorderRadius.circular(16),
-          border: m.isAlert
-              ? Border.all(color: AppColors.warning.withOpacity(0.5))
-              : null,
+          border: m.isAlert ? Border.all(color: AppColors.warning.withOpacity(0.5)) : null,
         ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(m.text, style: TextStyle(color: textColor, fontSize: 13)),
             if (action != null) action,
+            const SizedBox(height: 4),
+            Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(time, style: TextStyle(color: textColor.withOpacity(0.55), fontSize: 9)),
+                if (m.fromUser) ...[
+                  const SizedBox(width: 4),
+                  const Icon(Icons.done_all, size: 12, color: Colors.white70),
+                ],
+              ],
+            ),
           ],
+        ),
+      ),
+    );
+  }
+
+  Widget _quickChip(IconData icon, String label, VoidCallback onTap) {
+    return Padding(
+      padding: const EdgeInsets.only(right: 8, bottom: 8),
+      child: GestureDetector(
+        onTap: onTap,
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+          decoration: BoxDecoration(
+            color: AppColors.surface,
+            borderRadius: BorderRadius.circular(20),
+            border: Border.all(color: AppColors.surfaceLight),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(icon, size: 14, color: AppColors.textSecondary),
+              const SizedBox(width: 6),
+              Text(label, style: const TextStyle(color: AppColors.textPrimary, fontSize: 11)),
+            ],
+          ),
         ),
       ),
     );

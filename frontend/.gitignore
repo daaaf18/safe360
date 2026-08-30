@@ -46,3 +46,6 @@ app.*.map.json
 
 # Credenciales locales (token de Mapbox). Nunca se sube al repo.
 env.json
+
+# Configuración sensible de Supabase
+lib/supabase_config.dart

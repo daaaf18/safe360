@@ -1,11 +1,14 @@
 import 'package:flutter/material.dart';
 import 'package:mapbox_maps_flutter/mapbox_maps_flutter.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 import 'theme.dart';
 import 'screens/login_screen.dart';
+import 'supabase_config.dart';
 
-void main() {
+Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
+  // --- Mapbox ---
   // El token público de Mapbox se pasa en tiempo de build/run con:
   //   flutter run --dart-define-from-file=env.json
   // Ver env.example.json para el formato esperado.
@@ -18,6 +21,12 @@ void main() {
       'Corré la app con --dart-define-from-file=env.json',
     );
   }
+
+  // --- Supabase ---
+  await Supabase.initialize(
+    url: SupabaseConfig.url,
+    anonKey: SupabaseConfig.anonKey,
+  );
 
   runApp(const Safe360App());
 }
