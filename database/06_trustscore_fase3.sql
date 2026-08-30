@@ -1,6 +1,4 @@
--- ==========================================
 -- SEMANA 6: TrustScore - Fase 3 (Asignación de Score)
--- ==========================================
 
 -- 1. Tabla de configuraciones para el umbral dinámico
 CREATE TABLE IF NOT EXISTS configuraciones (
