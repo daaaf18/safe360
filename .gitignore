@@ -160,3 +160,7 @@ frontend/android/gradle/
 frontend/android/gradlew
 frontend/android/gradlew.bat
 frontend/android/app/src/main/java/io/flutter/plugins/GeneratedPluginRegistrant.java
+frontend/env.json
+frontend/macos/
+frontend/linux/
+frontend/android/app/build/

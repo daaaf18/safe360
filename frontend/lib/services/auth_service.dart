@@ -95,6 +95,18 @@ static Future<bool> isGuest() async {
   return prefs.getBool('isGuest') ?? false;
 }
 
+// Verificar si es la primera vez que abre la app
+  static Future<bool> isFirstTime() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getBool('firstTime') ?? true;
+  }
+
+  // Marcar que ya vio el onboarding
+  static Future<void> setFirstTimeDone() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool('firstTime', false);
+  }
+
   // Cerrar sesión
   static Future<void> logout() async {
     final prefs = await SharedPreferences.getInstance();

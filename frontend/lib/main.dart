@@ -3,15 +3,14 @@ import 'package:mapbox_maps_flutter/mapbox_maps_flutter.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'theme.dart';
 import 'screens/login_screen.dart';
+import 'screens/onboarding_screen.dart';
+import 'services/auth_service.dart';
 import 'supabase_config.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
   // --- Mapbox ---
-  // El token público de Mapbox se pasa en tiempo de build/run con:
-  //   flutter run --dart-define-from-file=env.json
-  // Ver env.example.json para el formato esperado.
   const accessToken = String.fromEnvironment('MAPBOX_ACCESS_TOKEN');
   if (accessToken.isNotEmpty) {
     MapboxOptions.setAccessToken(accessToken);
@@ -28,11 +27,15 @@ Future<void> main() async {
     anonKey: SupabaseConfig.anonKey,
   );
 
-  runApp(const Safe360App());
+  // --- Verificar si es primera vez ---
+  final esFirstTime = await AuthService.isFirstTime();
+
+  runApp(Safe360App(mostrarOnboarding: esFirstTime));
 }
 
 class Safe360App extends StatelessWidget {
-  const Safe360App({super.key});
+  final bool mostrarOnboarding;
+  const Safe360App({super.key, required this.mostrarOnboarding});
 
   @override
   Widget build(BuildContext context) {
@@ -40,7 +43,7 @@ class Safe360App extends StatelessWidget {
       title: 'Safe360',
       debugShowCheckedModeBanner: false,
       theme: buildSafe360Theme(),
-      home: const LoginScreen(),
+      home: mostrarOnboarding ? const OnboardingScreen() : const LoginScreen(),
     );
   }
 }

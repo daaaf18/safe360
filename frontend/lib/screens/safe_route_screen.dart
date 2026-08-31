@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:http/http.dart' as http;
 import '../theme.dart';
+import '../config.dart';
 
 class SafeRouteScreen extends StatefulWidget {
   const SafeRouteScreen({super.key});
@@ -12,13 +13,14 @@ class SafeRouteScreen extends StatefulWidget {
 }
 
 class _SafeRouteScreenState extends State<SafeRouteScreen> {
-  static const String baseUrl = 'http://localhost:3000';
+  String get baseUrl => ApiConfig.baseUrl;
 
   final _origenCtrl = TextEditingController();
   final _destinoCtrl = TextEditingController();
   bool _loading = false;
   String? _error;
   Map<String, dynamic>? _ruta;
+  bool _modoOffline = false;
 
   // Coordenadas de prueba en Puebla
   // Origen: BUAP, Destino: Zócalo de Puebla
@@ -26,6 +28,18 @@ class _SafeRouteScreenState extends State<SafeRouteScreen> {
   final _origenLon = -98.1983;
   final _destinoLat = 19.0432;
   final _destinoLon = -98.1982;
+
+  Future<void> _guardarRutaEnCache(Map<String, dynamic> ruta) async {
+  final prefs = await SharedPreferences.getInstance();
+  await prefs.setString('ultima_ruta', jsonEncode(ruta));
+}
+
+  Future<Map<String, dynamic>?> _cargarRutaDeCache() async {
+  final prefs = await SharedPreferences.getInstance();
+  final rutaJson = prefs.getString('ultima_ruta');
+  if (rutaJson == null) return null;
+  return jsonDecode(rutaJson) as Map<String, dynamic>;
+}
 
   Future<void> _calcularRuta() async {
     if (_origenCtrl.text.trim().isEmpty || _destinoCtrl.text.trim().isEmpty) {
@@ -68,19 +82,31 @@ class _SafeRouteScreenState extends State<SafeRouteScreen> {
       setState(() => _loading = false);
 
       if (response.statusCode == 200) {
-        setState(() => _ruta = jsonDecode(response.body));
+          final rutaData = jsonDecode(response.body) as Map<String, dynamic>;
+        await _guardarRutaEnCache(rutaData);
+        setState(() {
+        _ruta = rutaData;
+        _modoOffline = false;
+      });
       } else {
         final data = jsonDecode(response.body);
         setState(() => _error = data['error'] ?? 'Error al calcular la ruta');
       }
     } catch (e) {
-      setState(() {
-        _loading = false;
-        _error = 'Error de conexión con el servidor';
-      });
-    }
+  final rutaCache = await _cargarRutaDeCache();
+  setState(() {
+    _loading = false;
+    if (rutaCache != null) {
+      _ruta = rutaCache;
+      _modoOffline = true;
+      _error = null;
+    } else {
+      _modoOffline = false;
+      _error = 'Sin conexión y no hay ruta guardada';
+      }
+    });
   }
-
+}
   @override
   Widget build(BuildContext context) {
     final trustScore = (_ruta?['trust_score_promedio'] as num?)?.toDouble();
@@ -147,6 +173,27 @@ class _SafeRouteScreenState extends State<SafeRouteScreen> {
                   )
                 : const Text('Calcular ruta segura'),
           ),
+          if (_modoOffline) ...[
+  const SizedBox(height: 8),
+  Container(
+    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+    decoration: BoxDecoration(
+      color: AppColors.warning.withOpacity(0.15),
+      borderRadius: BorderRadius.circular(8),
+      border: Border.all(color: AppColors.warning.withOpacity(0.4)),
+    ),
+    child: Row(
+      children: const [
+        Icon(Icons.wifi_off, size: 14, color: AppColors.warning),
+        SizedBox(width: 8),
+        Expanded(
+          child: Text('Sin conexión — mostrando última ruta guardada',
+              style: TextStyle(color: AppColors.warning, fontSize: 11)),
+        ),
+      ],
+    ),
+  ),
+],
           if (_error != null) ...[
             const SizedBox(height: 10),
             Text(

@@ -28,3 +28,9 @@ dev_dependencies:
 
 flutter:
   uses-material-design: true
+  assets:
+    - assets/chaty/chaty_neutral.png
+    - assets/chaty/chaty_escuchando.png
+    - assets/chaty/chaty_procesando.png
+    - assets/chaty/chaty_emergencia.png
+    - assets/chaty/chaty_feliz.png

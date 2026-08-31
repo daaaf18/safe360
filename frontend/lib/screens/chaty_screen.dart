@@ -45,6 +45,8 @@ class _ChatyScreenState extends State<ChatyScreen> {
   bool _escuchando = false;
   bool _enviando = false;
   String _textoParcial = '';
+  String _avatarActual = 'assets/chaty/chaty_neutral.png';
+  bool _emergenciaDetectada = false;
 
   @override
   void initState() {
@@ -71,6 +73,7 @@ class _ChatyScreenState extends State<ChatyScreen> {
     if (_escuchando) {
       await _speech.stop();
       setState(() => _escuchando = false);
+      _actualizarAvatar('neutral');
       return;
     }
 
@@ -85,6 +88,7 @@ class _ChatyScreenState extends State<ChatyScreen> {
     }
 
     setState(() => _escuchando = true);
+    _actualizarAvatar('escuchando');
 
     await _speech.listen(
       localeId: 'es_MX',
@@ -107,6 +111,7 @@ class _ChatyScreenState extends State<ChatyScreen> {
       _escuchando = false;
       _enviando = true;
     });
+    _actualizarAvatar('procesando');
     _scrollAlFinal();
 
     try {
@@ -139,10 +144,12 @@ class _ChatyScreenState extends State<ChatyScreen> {
         );
         // Si es emergencia inmediata, navegar al SOS automáticamente
       if (data['emergencia_inmediata'] == true && mounted) {
-        Navigator.of(context).push(
-        MaterialPageRoute(builder: (_) => const SosScreen()),
-       );
-      }
+        _actualizarAvatar('emergencia');
+          await Future.delayed(const Duration(milliseconds: 800));
+          Navigator.of(context).push(
+      MaterialPageRoute(builder: (_) => const SosScreen()),
+  );
+}
       } else {
         _agregarRespuesta(
           'No pude procesar eso ahora mismo. Intenta de nuevo en un momento.',
@@ -156,6 +163,7 @@ class _ChatyScreenState extends State<ChatyScreen> {
       );
     } finally {
       if (mounted) setState(() => _enviando = false);
+      _actualizarAvatar('neutral');
     }
   }
 
@@ -181,6 +189,17 @@ class _ChatyScreenState extends State<ChatyScreen> {
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(mensaje)));
   }
+
+  void _actualizarAvatar(String estado) {
+  const avatares = {
+    'neutral':     'assets/chaty/chaty_neutral.png',
+    'escuchando':  'assets/chaty/chaty_escuchando.png',
+    'procesando':  'assets/chaty/chaty_procesando.png',
+    'emergencia':  'assets/chaty/chaty_emergencia.png',
+    'feliz':       'assets/chaty/chaty_feliz.png',
+  };
+  if (mounted) setState(() => _avatarActual = avatares[estado] ?? avatares['neutral']!);
+}
 
   @override
   void dispose() {
@@ -237,21 +256,29 @@ class _ChatyScreenState extends State<ChatyScreen> {
     return Scaffold(
       appBar: AppBar(
         title: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: const [
-            Icon(Icons.shield, color: AppColors.safe, size: 20),
-            SizedBox(width: 8),
-            Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text('Chaty', style: TextStyle(fontSize: 16)),
-                Text('Tu asistente de seguridad',
-                    style: TextStyle(fontSize: 10, color: AppColors.textSecondary)),
-              ],
-            ),
+        mainAxisSize: MainAxisSize.min,
+        children: [
+    AnimatedSwitcher(
+        duration: const Duration(milliseconds: 300),
+        child: Image.asset(
+        _avatarActual,
+        key: ValueKey(_avatarActual),
+        height: 36,
+        width: 36,
+      ),
+    ),
+    const SizedBox(width: 8),
+    const Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text('Chaty', style: TextStyle(fontSize: 16)),
+        Text('Tu asistente de seguridad',
+            style: TextStyle(fontSize: 10, color: AppColors.textSecondary)),
           ],
         ),
-      ),
+      ],
+    ),
+  ),
       body: Column(
         children: [
           // Banner superior
