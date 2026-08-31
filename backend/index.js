@@ -66,6 +66,14 @@ app.use('/zonas', zonasRoutes);
 app.use('/chaty', chatyRoutes);
 app.use('/rutas/transporte', transporteRoutes);
 
+// ── Ruta QR WhatsApp ──────────────────────────────────────
+app.get('/qr', async (req, res) => {
+  const { getQRImage } = require('./services/whatsapp.service');
+  const qrImage = await getQRImage();
+  if (!qrImage) return res.json({ message: 'WhatsApp ya está conectado o QR no disponible' });
+  res.send(`<html><body style="background:#000;display:flex;justify-content:center;align-items:center;height:100vh"><img src="${qrImage}" style="width:300px"/></body></html>`);
+});
+
 // ── Ruta de prueba ────────────────────────────────────────
 app.get('/', (req, res) => {
   res.json({ message: 'Safe360 API funcionando correctamente' });
@@ -82,5 +90,5 @@ app.use((err, req, res, next) => {
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
   console.log(`Servidor corriendo en http://localhost:${PORT}`);
-iniciarWhatsApp();
+  iniciarWhatsApp();
 });

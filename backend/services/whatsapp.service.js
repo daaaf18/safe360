@@ -1,25 +1,37 @@
 const { Client, LocalAuth } = require('whatsapp-web.js');
-const qrcode = require('qrcode-terminal');
+const qrcodeTerminal = require('qrcode-terminal');
+const qrcode = require('qrcode');
 
 let client = null;
 let isReady = false;
+let ultimoQR = null;
 
 const iniciarWhatsApp = () => {
   client = new Client({
     authStrategy: new LocalAuth(),
     puppeteer: {
       headless: true,
-      args: ['--no-sandbox', '--disable-setuid-sandbox'],
+      args: [
+        '--no-sandbox',
+        '--disable-setuid-sandbox',
+        '--disable-dev-shm-usage',
+        '--disable-accelerated-2d-canvas',
+        '--no-first-run',
+        '--no-zygote',
+        '--disable-gpu'
+      ],
     },
   });
 
-  client.on('qr', (qr) => {
+  client.on('qr', async (qr) => {
+    ultimoQR = qr;
     console.log('\n📱 Escanea este QR con WhatsApp para conectar Safe360:\n');
-    qrcode.generate(qr, { small: true });
+    qrcodeTerminal.generate(qr, { small: true });
   });
 
   client.on('ready', () => {
     isReady = true;
+    ultimoQR = null;
     console.log('✅ WhatsApp conectado correctamente');
   });
 
@@ -38,8 +50,7 @@ const enviarMensaje = async (telefono, mensaje) => {
   }
 
   try {
-    // Formato: 52XXXXXXXXXX@c.us (México = 52)
-    const numero = telefono.replace(/\D/g, ''); // quitar caracteres no numéricos
+    const numero = telefono.replace(/\D/g, '');
     const chatId = numero.startsWith('52')
       ? `${numero}@c.us`
       : `52${numero}@c.us`;
@@ -55,4 +66,9 @@ const enviarMensaje = async (telefono, mensaje) => {
 
 const estaListo = () => isReady;
 
-module.exports = { iniciarWhatsApp, enviarMensaje, estaListo };
+const getQRImage = async () => {
+  if (!ultimoQR) return null;
+  return await qrcode.toDataURL(ultimoQR);
+};
+
+module.exports = { iniciarWhatsApp, enviarMensaje, estaListo, getQRImage };
