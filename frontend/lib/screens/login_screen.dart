@@ -1,9 +1,13 @@
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 import '../theme.dart';
 import '../services/auth_service.dart';
 import 'register_screen.dart';
 import 'main_navigation.dart';
+
+const _googleWebClientId =
+    '27094083724-l4ubt86s3v72v9phjtol9nn04a0g2adt.apps.googleusercontent.com';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -19,16 +23,13 @@ class _LoginScreenState extends State<LoginScreen> {
   bool _loading = false;
   String? _error;
 
-  // En Android, `clientId` se ignora (el cliente OAuth se detecta por el
-  // package name + SHA-1 de la app). Lo que sí hace falta para que
-  // `authentication.idToken` no salga null es `serverClientId`, que debe
-  // ser el client ID de tipo "Web" — el mismo que el backend usa como
-  // audience en GOOGLE_WEB_CLIENT_ID (ver backend/.env y
-  // controllers/google.controller.js).
-  final GoogleSignIn _googleSignIn = GoogleSignIn(
-    serverClientId:
-        '27094083724-l4ubt86s3v72v9phjtol9nn04a0g2adt.apps.googleusercontent.com',
-  );
+  // En Web, google_sign_in_web EXIGE que serverClientId sea null (hace un
+  // assert). En Android, `clientId` se ignora y el idToken sale null si no
+  // se manda `serverClientId`. Por eso el parámetro cambia según plataforma;
+  // el valor es el mismo en ambos casos (GOOGLE_WEB_CLIENT_ID en backend/.env).
+  final GoogleSignIn _googleSignIn = kIsWeb
+      ? GoogleSignIn(clientId: _googleWebClientId)
+      : GoogleSignIn(serverClientId: _googleWebClientId);
 
   void _goHome() {
   Navigator.of(context).pushAndRemoveUntil(

@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:mapbox_maps_flutter/mapbox_maps_flutter.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -11,10 +12,13 @@ Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
   // --- Mapbox ---
+  // En Flutter Web (modo debug/DDC), mapbox_maps_flutter truena al llamar
+  // setAccessToken (usa bool.fromEnvironment fuera de un const constructor
+  // en su logging interno). Se omite en web hasta que el paquete lo soporte.
   const accessToken = String.fromEnvironment('MAPBOX_ACCESS_TOKEN');
-  if (accessToken.isNotEmpty) {
+  if (!kIsWeb && accessToken.isNotEmpty) {
     MapboxOptions.setAccessToken(accessToken);
-  } else {
+  } else if (accessToken.isEmpty) {
     debugPrint(
       '⚠️  MAPBOX_ACCESS_TOKEN no configurado. El mapa no va a cargar tiles. '
       'Corré la app con --dart-define-from-file=env.json',

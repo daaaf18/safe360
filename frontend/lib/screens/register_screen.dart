@@ -1,8 +1,12 @@
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 import '../theme.dart';
 import '../services/auth_service.dart';
 import 'main_navigation.dart';
+
+const _googleWebClientId =
+    '27094083724-l4ubt86s3v72v9phjtol9nn04a0g2adt.apps.googleusercontent.com';
 
 class RegisterScreen extends StatefulWidget {
   const RegisterScreen({super.key});
@@ -20,13 +24,13 @@ class _RegisterScreenState extends State<RegisterScreen> {
   bool _loading = false;
   String? _error;
 
-  // Ver la nota en login_screen.dart: en Android `clientId` se ignora, hace
-  // falta `serverClientId` con el client ID "Web" para que el idToken no
-  // salga null.
-  final GoogleSignIn _googleSignIn = GoogleSignIn(
-    serverClientId:
-        '27094083724-l4ubt86s3v72v9phjtol9nn04a0g2adt.apps.googleusercontent.com',
-  );
+  // En Web, google_sign_in_web EXIGE que serverClientId sea null (hace un
+  // assert). En Android, `clientId` se ignora y el idToken sale null si no
+  // se manda `serverClientId`. Por eso el parámetro cambia según plataforma;
+  // el valor es el mismo en ambos casos (GOOGLE_WEB_CLIENT_ID en backend/.env).
+  final GoogleSignIn _googleSignIn = kIsWeb
+      ? GoogleSignIn(clientId: _googleWebClientId)
+      : GoogleSignIn(serverClientId: _googleWebClientId);
 
   void _goHome() {
     Navigator.of(context).pushReplacement(
