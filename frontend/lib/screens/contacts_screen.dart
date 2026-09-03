@@ -59,7 +59,43 @@ class _ContactsScreenState extends State<ContactsScreen> {
     }
   }
 
+  // El backend exige teléfono de EXACTAMENTE 10 dígitos y nombre solo con
+  // letras/espacios (ver validarContacto en validacion.middleware.js). Los
+  // contactos reales del celular casi nunca vienen así: traen lada "+52",
+  // espacios, guiones, paréntesis, y el nombre puede traer apellidos con
+  // símbolos raros, emojis, etc. Antes se mandaban tal cual, el backend
+  // los rechazaba con 400, y como el catch no mostraba nada, parecía que
+  // "elegir un contacto no hacía nada". Esto los normaliza antes de
+  // mandarlos.
+  String _soloDigitos(String texto) => texto.replaceAll(RegExp(r'\D'), '');
+
+  /// Últimos 10 dígitos del número (quita lada de país tipo 52/521 que
+  /// antepone el celular a los contactos mexicanos).
+  String _telefonoA10Digitos(String telefono) {
+    final digitos = _soloDigitos(telefono);
+    if (digitos.length <= 10) return digitos;
+    return digitos.substring(digitos.length - 10);
+  }
+
+  String _nombreValido(String nombre) {
+    final limpio = nombre
+        .replaceAll(RegExp(r'[^a-zA-ZáéíóúÁÉÍÓÚñÑ\s]'), '')
+        .replaceAll(RegExp(r'\s+'), ' ')
+        .trim();
+    return limpio.isEmpty ? 'Contacto' : limpio;
+  }
+
   Future<void> _agregarContacto(String nombre, String telefono, String email) async {
+    final telefonoLimpio = _telefonoA10Digitos(telefono);
+    if (telefonoLimpio.length != 10) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(
+            'No se pudo agregar a $nombre: su número ($telefono) no tiene un '
+            'formato reconocible.')));
+      }
+      return;
+    }
+
     try {
       final response = await http.post(
         Uri.parse('${ApiConfig.baseUrl}/users/$_userId/contactos'),
@@ -68,17 +104,35 @@ class _ContactsScreenState extends State<ContactsScreen> {
           'Authorization': 'Bearer $_token',
         },
         body: jsonEncode({
-          'nombre': nombre,
-          'telefono': telefono,
-          'email': email,
+          'nombre': _nombreValido(nombre),
+          'telefono': telefonoLimpio,
+          if (email.isNotEmpty) 'email': email,
         }),
       );
 
       if (response.statusCode == 201) {
         _cargarContactos();
+      } else if (mounted) {
+        String detalle = 'Intenta de nuevo.';
+        try {
+          final data = jsonDecode(response.body);
+          final errores = data['errores'] as List?;
+          if (errores != null && errores.isNotEmpty) {
+            detalle = errores.map((e) => e['msg']).join(', ');
+          } else if (data['error'] != null) {
+            detalle = data['error'];
+          }
+        } catch (_) {}
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('No se pudo agregar a $nombre: $detalle')),
+        );
       }
     } catch (e) {
-      // Error silencioso
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('No se pudo agregar a $nombre: sin conexión con el servidor.')),
+        );
+      }
     }
   }
 
@@ -96,8 +150,10 @@ class _ContactsScreenState extends State<ContactsScreen> {
 
   Future<void> _seleccionarDeContactos() async {
     // Pedir permiso
-    final permiso = await FlutterContacts.requestPermission(readonly: true);
-    if (!permiso) {
+    final permiso =
+        await FlutterContacts.permissions.request(PermissionType.read);
+    if (permiso != PermissionStatus.granted &&
+        permiso != PermissionStatus.limited) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('Permiso de contactos denegado')),
@@ -107,9 +163,8 @@ class _ContactsScreenState extends State<ContactsScreen> {
     }
 
     // Obtener contactos del dispositivo
-    final contactos = await FlutterContacts.getContacts(
-      withProperties: true,
-      withPhoto: false,
+    final contactos = await FlutterContacts.getAll(
+      properties: {ContactProperty.phone, ContactProperty.email},
     );
 
     if (!mounted) return;
@@ -165,7 +220,7 @@ class _ContactsScreenState extends State<ContactsScreen> {
                             child: Icon(Icons.person, color: AppColors.textSecondary),
                           ),
                           title: Text(
-                            c.displayName,
+                            c.displayName ?? '',
                             style: const TextStyle(color: AppColors.textPrimary),
                           ),
                           subtitle: Text(
@@ -179,7 +234,7 @@ class _ContactsScreenState extends State<ContactsScreen> {
                               ? () {
                                   Navigator.pop(ctx);
                                   _agregarContacto(
-                                    c.displayName,
+                                    c.displayName ?? '',
                                     telefono,
                                     email,
                                   );

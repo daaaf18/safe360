@@ -5,7 +5,11 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:http/http.dart' as http;
 import 'package:image_picker/image_picker.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import '../config.dart';
 import '../theme.dart';
+import '../widgets/safe360_map.dart';
+import '../services/location_service.dart';
+import 'mapa_completo_screen.dart';
 
 class ReportScreen extends StatefulWidget {
   const ReportScreen({super.key});
@@ -37,8 +41,34 @@ class _ReportScreenState extends State<ReportScreen> {
     ('Otro', Icons.more_horiz, AppColors.textSecondary),
   ];
 
-  final double _latitud = 19.0414;
-  final double _longitud = -98.2063;
+  // Centro de Puebla como fallback si no hay permiso de ubicación, el GPS
+  // está apagado, o el dispositivo no reporta posición (p. ej. emulador sin
+  // ubicación simulada). Se reemplaza por la ubicación real en initState.
+  double _latitud = 19.0414;
+  double _longitud = -98.2063;
+  bool _ubicacionEsReal = false;
+  String? _errorUbicacion;
+
+  @override
+  void initState() {
+    super.initState();
+    _obtenerUbicacion();
+  }
+
+  Future<void> _obtenerUbicacion() async {
+    final resultado = await LocationService.obtenerUbicacionActual();
+    if (!mounted) return;
+    if (resultado.exito) {
+      setState(() {
+        _latitud = resultado.posicion!.latitude;
+        _longitud = resultado.posicion!.longitude;
+        _ubicacionEsReal = true;
+        _errorUbicacion = null;
+      });
+    } else {
+      setState(() => _errorUbicacion = resultado.mensajeError);
+    }
+  }
 
   Future<void> _mostrarOpcionesEvidencia() async {
     await showModalBottomSheet(
@@ -175,7 +205,7 @@ class _ReportScreenState extends State<ReportScreen> {
       }
 
       final response = await http.post(
-        Uri.parse('http://localhost:3000/reportes'),
+        Uri.parse('${ApiConfig.baseUrl}/reportes'),
         headers: {
           'Content-Type': 'application/json',
           'Authorization': 'Bearer $token',
@@ -359,27 +389,97 @@ class _ReportScreenState extends State<ReportScreen> {
           const Text('4. Ubicación del incidente',
               style: TextStyle(color: AppColors.textPrimary, fontWeight: FontWeight.w600)),
           const SizedBox(height: 10),
-          ClipRRect(
-            borderRadius: BorderRadius.circular(14),
-            child: Container(
-              height: 150,
-              color: const Color(0xFF1A2A2E),
-              child: Stack(
-                alignment: Alignment.center,
-                children: [
-                  Icon(Icons.location_on, color: AppColors.danger.withOpacity(0.9), size: 30),
-                  Positioned(
-                    bottom: 10,
-                    right: 10,
-                    child: Text(
-                      'Vista previa de ubicación',
-                      style: TextStyle(color: Colors.white.withOpacity(0.4), fontSize: 11),
-                    ),
-                  ),
+          GestureDetector(
+            // El preview chiquito solo da una idea del punto; tocarlo abre
+            // el mapa completo para poder verlo bien y confirmar que es el
+            // lugar correcto.
+            onTap: () => Navigator.of(context).push(MaterialPageRoute(
+              builder: (_) => MapaCompletoScreen(
+                titulo: 'Ubicación del incidente',
+                centerLat: _latitud,
+                centerLon: _longitud,
+                reportes: [
+                  {
+                    'latitud': _latitud,
+                    'longitud': _longitud,
+                    'categoria': _category,
+                    'estado': 'pendiente',
+                  },
                 ],
               ),
+            )),
+            child: Stack(
+              children: [
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(14),
+                  child: SizedBox(
+                    height: 150,
+                    child: IgnorePointer(
+                      // Solo vista previa: el punto es fijo
+                      // (centerLat/centerLon), no permitimos mover el mapa
+                      // desde este preview chiquito. Le mandamos un
+                      // "reporte" sintético para que se vea el pin exacto
+                      // del incidente, coloreado según la categoría elegida.
+                      child: Safe360Map(
+                        centerLat: _latitud,
+                        centerLon: _longitud,
+                        reportes: [
+                          {
+                            'latitud': _latitud,
+                            'longitud': _longitud,
+                            'categoria': _category,
+                            'estado': 'pendiente',
+                          },
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+                Positioned(
+                  right: 10,
+                  bottom: 10,
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+                    decoration: BoxDecoration(
+                      color: AppColors.surface.withOpacity(0.9),
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: const Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(Icons.fullscreen, size: 14, color: AppColors.textPrimary),
+                        SizedBox(width: 4),
+                        Text('Ver completo',
+                            style: TextStyle(color: AppColors.textPrimary, fontSize: 10)),
+                      ],
+                    ),
+                  ),
+                ),
+              ],
             ),
           ),
+          if (!_ubicacionEsReal) ...[
+            const SizedBox(height: 8),
+            Row(children: [
+              Icon(Icons.warning_amber_rounded, size: 13, color: AppColors.warning.withOpacity(0.9)),
+              const SizedBox(width: 6),
+              Expanded(
+                child: Text(
+                  '${_errorUbicacion ?? "No se pudo obtener tu ubicación real."} '
+                  'El reporte se enviará con una ubicación aproximada del centro de Puebla.',
+                  style: const TextStyle(color: AppColors.warning, fontSize: 11),
+                ),
+              ),
+              TextButton(
+                onPressed: _obtenerUbicacion,
+                style: TextButton.styleFrom(
+                  minimumSize: Size.zero,
+                  padding: const EdgeInsets.symmetric(horizontal: 8),
+                ),
+                child: const Text('Reintentar', style: TextStyle(fontSize: 11)),
+              ),
+            ]),
+          ],
           if (_error != null) ...[
             const SizedBox(height: 12),
             Text(
