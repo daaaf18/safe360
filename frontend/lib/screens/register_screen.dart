@@ -20,8 +20,12 @@ class _RegisterScreenState extends State<RegisterScreen> {
   bool _loading = false;
   String? _error;
 
+  // Ver la nota en login_screen.dart: en Android `clientId` se ignora, hace
+  // falta `serverClientId` con el client ID "Web" para que el idToken no
+  // salga null.
   final GoogleSignIn _googleSignIn = GoogleSignIn(
-    clientId: '27094083724-l06fgnb73ikr6mppobm2gd42f6tvrnk2.apps.googleusercontent.com',
+    serverClientId:
+        '27094083724-l4ubt86s3v72v9phjtol9nn04a0g2adt.apps.googleusercontent.com',
   );
 
   void _goHome() {
@@ -66,7 +70,15 @@ class _RegisterScreenState extends State<RegisterScreen> {
       final auth = await account.authentication;
       final idToken = auth.idToken;
 
-      final resultado = await AuthService.loginConGoogle(idToken!);
+      if (idToken == null) {
+        setState(() {
+          _loading = false;
+          _error = 'Google no devolvió credenciales válidas. Intenta de nuevo.';
+        });
+        return;
+      }
+
+      final resultado = await AuthService.loginConGoogle(idToken);
 
       setState(() => _loading = false);
 

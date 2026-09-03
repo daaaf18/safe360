@@ -19,8 +19,15 @@ class _LoginScreenState extends State<LoginScreen> {
   bool _loading = false;
   String? _error;
 
+  // En Android, `clientId` se ignora (el cliente OAuth se detecta por el
+  // package name + SHA-1 de la app). Lo que sí hace falta para que
+  // `authentication.idToken` no salga null es `serverClientId`, que debe
+  // ser el client ID de tipo "Web" — el mismo que el backend usa como
+  // audience en GOOGLE_WEB_CLIENT_ID (ver backend/.env y
+  // controllers/google.controller.js).
   final GoogleSignIn _googleSignIn = GoogleSignIn(
-    clientId: '27094083724-l06fgnb73ikr6mppobm2gd42f6tvrnk2.apps.googleusercontent.com',
+    serverClientId:
+        '27094083724-l4ubt86s3v72v9phjtol9nn04a0g2adt.apps.googleusercontent.com',
   );
 
   void _goHome() {
@@ -66,7 +73,15 @@ class _LoginScreenState extends State<LoginScreen> {
       final auth = await account.authentication;
       final idToken = auth.idToken;
 
-      final resultado = await AuthService.loginConGoogle(idToken!);
+      if (idToken == null) {
+        setState(() {
+          _loading = false;
+          _error = 'Google no devolvió credenciales válidas. Intenta de nuevo.';
+        });
+        return;
+      }
+
+      final resultado = await AuthService.loginConGoogle(idToken);
 
       setState(() => _loading = false);
 

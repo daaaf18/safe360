@@ -21,65 +21,92 @@ class AuthService {
     return fallback;
   }
 
+  /// Sin timeout, si el backend no responde (apagado, IP equivocada en
+  /// config.dart, celular fuera de la red WiFi de la compu) la petición se
+  /// queda colgada indefinidamente y la pantalla de login parece "trabada".
+  /// Con esto, a los 10s se cae con un mensaje claro en vez de quedarse ahí.
+  static const _timeout = Duration(seconds: 10);
+  static const _errorConexion =
+      'No se pudo conectar con el servidor. Revisa que el backend esté '
+      'corriendo y que la IP en config.dart sea correcta.';
+
   // Login con email y contraseña
   static Future<Map<String, dynamic>> login(String email, String password) async {
-    final response = await http.post(
-      Uri.parse('$baseUrl/auth/login'),
-      headers: {'Content-Type': 'application/json'},
-      body: jsonEncode({'email': email, 'password': password}),
-    );
+    try {
+      final response = await http
+          .post(
+            Uri.parse('$baseUrl/auth/login'),
+            headers: {'Content-Type': 'application/json'},
+            body: jsonEncode({'email': email, 'password': password}),
+          )
+          .timeout(_timeout);
 
-    final data = jsonDecode(response.body);
+      final data = jsonDecode(response.body);
 
-    if (response.statusCode == 200) {
-      final prefs = await SharedPreferences.getInstance();
-      await prefs.setString('token', data['token']);
-      await prefs.setString('usuario', jsonEncode(data['usuario']));
-      return {'success': true, 'data': data};
-    } else {
-      return {'success': false, 'error': _extraerError(data, 'Error al iniciar sesión')};
+      if (response.statusCode == 200) {
+        final prefs = await SharedPreferences.getInstance();
+        await prefs.setString('token', data['token']);
+        await prefs.setString('usuario', jsonEncode(data['usuario']));
+        return {'success': true, 'data': data};
+      } else {
+        return {'success': false, 'error': _extraerError(data, 'Error al iniciar sesión')};
+      }
+    } catch (e) {
+      return {'success': false, 'error': _errorConexion};
     }
   }
 
   // Login con Google
   static Future<Map<String, dynamic>> loginConGoogle(String idToken) async {
-    final response = await http.post(
-      Uri.parse('$baseUrl/auth/google'),
-      headers: {'Content-Type': 'application/json'},
-      body: jsonEncode({'idToken': idToken}),
-    );
+    try {
+      final response = await http
+          .post(
+            Uri.parse('$baseUrl/auth/google'),
+            headers: {'Content-Type': 'application/json'},
+            body: jsonEncode({'idToken': idToken}),
+          )
+          .timeout(_timeout);
 
-    final data = jsonDecode(response.body);
+      final data = jsonDecode(response.body);
 
-    if (response.statusCode == 200) {
-      final prefs = await SharedPreferences.getInstance();
-      await prefs.setString('token', data['token']);
-      await prefs.setString('usuario', jsonEncode(data['usuario']));
-      await prefs.remove('isGuest');
-      return {'success': true, 'data': data};
-    } else {
-      return {'success': false, 'error': _extraerError(data, 'Error con Google')};
+      if (response.statusCode == 200) {
+        final prefs = await SharedPreferences.getInstance();
+        await prefs.setString('token', data['token']);
+        await prefs.setString('usuario', jsonEncode(data['usuario']));
+        await prefs.remove('isGuest');
+        return {'success': true, 'data': data};
+      } else {
+        return {'success': false, 'error': _extraerError(data, 'Error con Google')};
+      }
+    } catch (e) {
+      return {'success': false, 'error': _errorConexion};
     }
   }
 
   // Register
   static Future<Map<String, dynamic>> register(String nombre, String email, String password) async {
-    final response = await http.post(
-      Uri.parse('$baseUrl/auth/register'),
-      headers: {'Content-Type': 'application/json'},
-      body: jsonEncode({'nombre': nombre, 'email': email, 'password': password}),
-    );
+    try {
+      final response = await http
+          .post(
+            Uri.parse('$baseUrl/auth/register'),
+            headers: {'Content-Type': 'application/json'},
+            body: jsonEncode({'nombre': nombre, 'email': email, 'password': password}),
+          )
+          .timeout(_timeout);
 
-    final data = jsonDecode(response.body);
+      final data = jsonDecode(response.body);
 
-    if (response.statusCode == 201) {
-      final prefs = await SharedPreferences.getInstance();
-      await prefs.setString('token', data['token']);
-      await prefs.setString('usuario', jsonEncode(data['usuario']));
-      await prefs.remove('isGuest');
-      return {'success': true, 'data': data};
-    } else {
-      return {'success': false, 'error': _extraerError(data, 'Error al registrarse')};
+      if (response.statusCode == 201) {
+        final prefs = await SharedPreferences.getInstance();
+        await prefs.setString('token', data['token']);
+        await prefs.setString('usuario', jsonEncode(data['usuario']));
+        await prefs.remove('isGuest');
+        return {'success': true, 'data': data};
+      } else {
+        return {'success': false, 'error': _extraerError(data, 'Error al registrarse')};
+      }
+    } catch (e) {
+      return {'success': false, 'error': _errorConexion};
     }
   }
 
