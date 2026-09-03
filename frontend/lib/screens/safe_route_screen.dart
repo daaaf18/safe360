@@ -1,12 +1,32 @@
+import 'dart:async';
 import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:http/http.dart' as http;
 import '../theme.dart';
 import '../config.dart';
+import '../widgets/safe360_map.dart';
+import '../services/geocoding_service.dart';
+import '../services/location_service.dart';
+import 'mapa_completo_screen.dart';
+import 'map_picker_screen.dart';
 
 class SafeRouteScreen extends StatefulWidget {
-  const SafeRouteScreen({super.key});
+  // Para reactivar una ruta frecuente desde Perfil con un toque, sin
+  // tener que volver a escribir origen/destino — ver
+  // _SafeRouteScreenState.initState().
+  final double? initialOrigenLat;
+  final double? initialOrigenLon;
+  final double? initialDestinoLat;
+  final double? initialDestinoLon;
+
+  const SafeRouteScreen({
+    super.key,
+    this.initialOrigenLat,
+    this.initialOrigenLon,
+    this.initialDestinoLat,
+    this.initialDestinoLon,
+  });
 
   @override
   State<SafeRouteScreen> createState() => _SafeRouteScreenState();
@@ -18,16 +38,141 @@ class _SafeRouteScreenState extends State<SafeRouteScreen> {
   final _origenCtrl = TextEditingController();
   final _destinoCtrl = TextEditingController();
   bool _loading = false;
+  bool _cargandoAlternativa = false;
   String? _error;
   Map<String, dynamic>? _ruta;
   bool _modoOffline = false;
 
-  // Coordenadas de prueba en Puebla
-  // Origen: BUAP, Destino: Zócalo de Puebla
-  final _origenLat = 19.0434;
-  final _origenLon = -98.1983;
-  final _destinoLat = 19.0432;
-  final _destinoLon = -98.1982;
+  // Coordenadas ya geocodificadas de lo que el usuario escribió (o de su
+  // GPS, si dejó "Origen" vacío). Null hasta que se calcule una ruta.
+  double? _origenLat;
+  double? _origenLon;
+  double? _destinoLat;
+  double? _destinoLon;
+
+  // ── Autocompletado de direcciones (estilo DiDi) ──────────────────────
+  List<({String nombre, double lat, double lon})> _sugerenciasOrigen = [];
+  List<({String nombre, double lat, double lon})> _sugerenciasDestino = [];
+  Timer? _debounceOrigen;
+  Timer? _debounceDestino;
+
+  // Coordenadas ya resueltas cuando el usuario toca una sugerencia — así
+  // _calcularRuta no vuelve a pegarle a la API de geocoding si no hace
+  // falta. Se invalidan (vuelven a null) en cuanto se edita el texto.
+  ({double lat, double lon})? _origenElegido;
+  ({double lat, double lon})? _destinoElegido;
+
+  @override
+  void initState() {
+    super.initState();
+    final destLat = widget.initialDestinoLat;
+    final destLon = widget.initialDestinoLon;
+    if (destLat != null && destLon != null) {
+      _reactivarRutaGuardada(
+        origenLat: widget.initialOrigenLat,
+        origenLon: widget.initialOrigenLon,
+        destinoLat: destLat,
+        destinoLon: destLon,
+      );
+    }
+  }
+
+  /// Rellena los campos con una ruta que ya se había calculado antes (ver
+  /// "Rutas frecuentes" en Perfil) y dispara el cálculo — evita que el
+  /// usuario tenga que volver a escribir/elegir origen y destino a mano.
+  /// El geocoding inverso es solo para que los campos de texto se vean
+  /// bien; si falla, cae a una etiqueta genérica y de todos modos calcula
+  /// la ruta (las coordenadas ya están resueltas, no dependen de esto).
+  Future<void> _reactivarRutaGuardada({
+    double? origenLat,
+    double? origenLon,
+    required double destinoLat,
+    required double destinoLon,
+  }) async {
+    if (origenLat != null && origenLon != null) {
+      final nombre = await GeocodingService.direccionDesde(origenLat, origenLon);
+      _origenCtrl.text = nombre ?? 'Origen guardado';
+      _origenElegido = (lat: origenLat, lon: origenLon);
+    }
+
+    final nombreDestino = await GeocodingService.direccionDesde(destinoLat, destinoLon);
+    _destinoCtrl.text = nombreDestino ?? 'Destino guardado';
+    _destinoElegido = (lat: destinoLat, lon: destinoLon);
+
+    if (mounted) await _calcularRuta();
+  }
+
+  @override
+  void dispose() {
+    _debounceOrigen?.cancel();
+    _debounceDestino?.cancel();
+    _origenCtrl.dispose();
+    _destinoCtrl.dispose();
+    super.dispose();
+  }
+
+  void _onOrigenChanged(String texto) {
+    _origenElegido = null;
+    _debounceOrigen?.cancel();
+    _debounceOrigen = Timer(const Duration(milliseconds: 350), () async {
+      final resultados = await GeocodingService.sugerencias(texto);
+      if (mounted) setState(() => _sugerenciasOrigen = resultados);
+    });
+  }
+
+  void _onDestinoChanged(String texto) {
+    _destinoElegido = null;
+    _debounceDestino?.cancel();
+    _debounceDestino = Timer(const Duration(milliseconds: 350), () async {
+      final resultados = await GeocodingService.sugerencias(texto);
+      if (mounted) setState(() => _sugerenciasDestino = resultados);
+    });
+  }
+
+  void _elegirOrigen(({String nombre, double lat, double lon}) s) {
+    _origenCtrl.text = s.nombre;
+    _origenElegido = (lat: s.lat, lon: s.lon);
+    setState(() => _sugerenciasOrigen = []);
+    FocusScope.of(context).unfocus();
+  }
+
+  void _elegirDestino(({String nombre, double lat, double lon}) s) {
+    _destinoCtrl.text = s.nombre;
+    _destinoElegido = (lat: s.lat, lon: s.lon);
+    setState(() => _sugerenciasDestino = []);
+    FocusScope.of(context).unfocus();
+  }
+
+  /// Abre el selector "marca en el mapa" (estilo DiDi) — para cuando el
+  /// lugar que buscas no sale en las sugerencias de geocoding. Arranca
+  /// centrado en lo que ya se haya elegido/escrito para ese campo, si hay
+  /// algo, para no perder el contexto de dónde andabas buscando.
+  Future<void> _elegirEnMapa({required bool esOrigen}) async {
+    FocusScope.of(context).unfocus();
+    final previo = esOrigen ? _origenElegido : _destinoElegido;
+    final resultado = await Navigator.of(context).push<({double lat, double lon, String nombre})>(
+      MaterialPageRoute(
+        builder: (_) => MapPickerScreen(
+          titulo: esOrigen ? 'Marca el origen' : 'Marca el destino',
+          centerLatInicial: previo?.lat,
+          centerLonInicial: previo?.lon,
+        ),
+      ),
+    );
+    if (resultado == null) return;
+
+    setState(() {
+      if (esOrigen) {
+        _origenCtrl.text = resultado.nombre;
+        _origenElegido = (lat: resultado.lat, lon: resultado.lon);
+        _sugerenciasOrigen = [];
+      } else {
+        _destinoCtrl.text = resultado.nombre;
+        _destinoElegido = (lat: resultado.lat, lon: resultado.lon);
+        _sugerenciasDestino = [];
+      }
+    });
+  }
 
   Future<void> _guardarRutaEnCache(Map<String, dynamic> ruta) async {
   final prefs = await SharedPreferences.getInstance();
@@ -42,8 +187,8 @@ class _SafeRouteScreenState extends State<SafeRouteScreen> {
 }
 
   Future<void> _calcularRuta() async {
-    if (_origenCtrl.text.trim().isEmpty || _destinoCtrl.text.trim().isEmpty) {
-      setState(() => _error = 'Ingresa origen y destino');
+    if (_destinoCtrl.text.trim().isEmpty) {
+      setState(() => _error = 'Ingresa un destino');
       return;
     }
 
@@ -64,6 +209,67 @@ class _SafeRouteScreenState extends State<SafeRouteScreen> {
         });
         return;
       }
+
+      // Origen vacío = usar el GPS actual. Si tocaste una sugerencia ya
+      // tenemos las coordenadas (nos ahorramos otro viaje a la API); si
+      // solo escribiste texto sin elegir sugerencia, lo geocodificamos.
+      final origenTexto = _origenCtrl.text.trim();
+      double? origenLat;
+      double? origenLon;
+      if (origenTexto.isEmpty) {
+        final resultadoUbicacion = await LocationService.obtenerUbicacionActual();
+        if (resultadoUbicacion.exito) {
+          origenLat = resultadoUbicacion.posicion!.latitude;
+          origenLon = resultadoUbicacion.posicion!.longitude;
+        } else {
+          setState(() {
+            _loading = false;
+            _error = resultadoUbicacion.mensajeError;
+          });
+          return;
+        }
+      } else if (_origenElegido != null) {
+        origenLat = _origenElegido!.lat;
+        origenLon = _origenElegido!.lon;
+      } else {
+        final resultado = await GeocodingService.buscar(origenTexto);
+        if (resultado != null) {
+          origenLat = resultado.lat;
+          origenLon = resultado.lon;
+        } else {
+          setState(() {
+            _loading = false;
+            _error = 'No encontramos "$origenTexto". Intenta ser más específico.';
+          });
+          return;
+        }
+      }
+
+      final destinoTexto = _destinoCtrl.text.trim();
+      double? destinoLat;
+      double? destinoLon;
+      if (_destinoElegido != null) {
+        destinoLat = _destinoElegido!.lat;
+        destinoLon = _destinoElegido!.lon;
+      } else {
+        final destinoResuelto = await GeocodingService.buscar(destinoTexto);
+        if (destinoResuelto == null) {
+          setState(() {
+            _loading = false;
+            _error = 'No encontramos "$destinoTexto". Intenta ser más específico.';
+          });
+          return;
+        }
+        destinoLat = destinoResuelto.lat;
+        destinoLon = destinoResuelto.lon;
+      }
+
+      setState(() {
+        _origenLat = origenLat;
+        _origenLon = origenLon;
+        _destinoLat = destinoLat;
+        _destinoLon = destinoLon;
+      });
 
       final response = await http.post(
         Uri.parse('$baseUrl/rutas/segura'),
@@ -107,6 +313,68 @@ class _SafeRouteScreenState extends State<SafeRouteScreen> {
     });
   }
 }
+
+  /// Vuelve a pedir la misma ruta pero con `usar_alternativa: true` — ya
+  /// tenemos origen/destino resueltos de _calcularRuta, así que no hace
+  /// falta geocodificar de nuevo.
+  Future<void> _verRutaAlternativa() async {
+    if (_origenLat == null || _destinoLat == null || _cargandoAlternativa) return;
+
+    setState(() {
+      _cargandoAlternativa = true;
+      _error = null;
+    });
+
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final token = prefs.getString('token');
+      if (token == null) {
+        setState(() {
+          _cargandoAlternativa = false;
+          _error = 'Debes iniciar sesión';
+        });
+        return;
+      }
+
+      final response = await http
+          .post(
+            Uri.parse('$baseUrl/rutas/segura'),
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': 'Bearer $token',
+            },
+            body: jsonEncode({
+              'origen_lat': _origenLat,
+              'origen_lon': _origenLon,
+              'destino_lat': _destinoLat,
+              'destino_lon': _destinoLon,
+              'usar_alternativa': true,
+            }),
+          )
+          .timeout(const Duration(seconds: 15));
+
+      if (response.statusCode == 200) {
+        final rutaData = jsonDecode(response.body) as Map<String, dynamic>;
+        setState(() {
+          _cargandoAlternativa = false;
+          _ruta = rutaData;
+          _modoOffline = false;
+        });
+      } else {
+        final data = jsonDecode(response.body);
+        setState(() {
+          _cargandoAlternativa = false;
+          _error = data['error'] ?? 'No se pudo calcular la ruta alternativa';
+        });
+      }
+    } catch (e) {
+      setState(() {
+        _cargandoAlternativa = false;
+        _error = 'Error de conexión buscando la ruta alternativa';
+      });
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final trustScore = (_ruta?['trust_score_promedio'] as num?)?.toDouble();
@@ -145,22 +413,26 @@ class _SafeRouteScreenState extends State<SafeRouteScreen> {
                 style: TextStyle(color: AppColors.textSecondary, fontSize: 12)),
           ),
           const SizedBox(height: 18),
-          TextField(
+          _campoDireccion(
             controller: _origenCtrl,
-            style: const TextStyle(color: AppColors.textPrimary),
-            decoration: const InputDecoration(
-              hintText: 'Origen',
-              prefixIcon: Icon(Icons.trip_origin, color: AppColors.safe),
-            ),
+            hint: 'Origen (vacío = tu ubicación actual)',
+            icono: Icons.trip_origin,
+            colorIcono: AppColors.safe,
+            onChanged: _onOrigenChanged,
+            sugerencias: _sugerenciasOrigen,
+            onElegir: _elegirOrigen,
+            onElegirEnMapa: () => _elegirEnMapa(esOrigen: true),
           ),
           const SizedBox(height: 10),
-          TextField(
+          _campoDireccion(
             controller: _destinoCtrl,
-            style: const TextStyle(color: AppColors.textPrimary),
-            decoration: const InputDecoration(
-              hintText: 'Destino',
-              prefixIcon: Icon(Icons.location_on_outlined, color: AppColors.danger),
-            ),
+            hint: 'Destino',
+            icono: Icons.location_on_outlined,
+            colorIcono: AppColors.danger,
+            onChanged: _onDestinoChanged,
+            sugerencias: _sugerenciasDestino,
+            onElegir: _elegirDestino,
+            onElegirEnMapa: () => _elegirEnMapa(esOrigen: false),
           ),
           const SizedBox(height: 16),
           ElevatedButton(
@@ -203,15 +475,40 @@ class _SafeRouteScreenState extends State<SafeRouteScreen> {
             ),
           ],
           const SizedBox(height: 18),
-          ClipRRect(
-            borderRadius: BorderRadius.circular(16),
-            child: Container(
-              height: 230,
-              color: const Color(0xFF1A2A2E),
-              child: Stack(
-                children: [
-                  const Center(
-                    child: Icon(Icons.alt_route, color: Colors.white38, size: 40),
+          GestureDetector(
+            onTap: () => Navigator.of(context).push(MaterialPageRoute(
+              builder: (_) => MapaCompletoScreen(
+                titulo: 'Ruta segura',
+                showRoute: _ruta != null,
+                routeOriginLat: _origenLat,
+                routeOriginLon: _origenLon,
+                routeDestLat: _destinoLat,
+                routeDestLon: _destinoLon,
+                routePoints: _ruta?['puntos'] as List<dynamic>?,
+                puntosInteres: _ruta?['puntos_interes'] as List<dynamic>?,
+                // Sin esto el mapa completo abre centrado en el GPS actual
+                // del usuario en vez de la ruta que se acaba de calcular.
+                centerLat: _origenLat,
+                centerLon: _origenLon,
+              ),
+            )),
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(16),
+              child: SizedBox(
+                height: 230,
+                child: Stack(
+                  children: [
+                  // Solo se dibuja la línea recta origen-destino cuando ya
+                  // hay una ruta calculada (ver TODO en safe360_map.dart:
+                  // el backend aún no regresa geometría de ruta real).
+                  Safe360Map(
+                    showRoute: _ruta != null,
+                    routeOriginLat: _origenLat,
+                    routeOriginLon: _origenLon,
+                    routeDestLat: _destinoLat,
+                    routeDestLon: _destinoLon,
+                    routePoints: _ruta?['puntos'] as List<dynamic>?,
+                    puntosInteres: _ruta?['puntos_interes'] as List<dynamic>?,
                   ),
                   Positioned(
                     left: 10,
@@ -238,13 +535,26 @@ class _SafeRouteScreenState extends State<SafeRouteScreen> {
                   Positioned(
                     bottom: 10,
                     right: 10,
-                    child: Text(
-                      'Ver mapa completo en la pestaña Mapa',
-                      style: TextStyle(color: Colors.white.withOpacity(0.4), fontSize: 10),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+                      decoration: BoxDecoration(
+                        color: AppColors.surface.withOpacity(0.9),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: const Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(Icons.fullscreen, size: 14, color: AppColors.textPrimary),
+                          SizedBox(width: 4),
+                          Text('Ver completo',
+                              style: TextStyle(color: AppColors.textPrimary, fontSize: 10)),
+                        ],
+                      ),
                     ),
                   ),
                 ],
               ),
+            ),
             ),
           ),
           const SizedBox(height: 18),
@@ -311,16 +621,92 @@ class _SafeRouteScreenState extends State<SafeRouteScreen> {
                 ),
               ),
             ],
+            // Score temporal: riesgo de este tramo según la hora actual —
+            // K-Means si hay suficiente historial, fórmula fija si no
+            // (ver ml.service.js). Solo se muestra si hay algo que decir
+            // (el backend manda `mensaje: null` cuando el riesgo ya es bajo).
+            if (_ruta?['score_temporal']?['mensaje'] != null) ...[
+              const SizedBox(height: 12),
+              Container(
+                padding: const EdgeInsets.all(14),
+                decoration: BoxDecoration(
+                  color: AppColors.warning.withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: AppColors.warning.withOpacity(0.3)),
+                ),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Icon(Icons.schedule, size: 16, color: AppColors.warning),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Text(_ruta!['score_temporal']['mensaje'],
+                          style: const TextStyle(color: AppColors.textPrimary, fontSize: 12)),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+            if ((_ruta?['puntos_interes'] as List<dynamic>?)?.isNotEmpty == true) ...[
+              const SizedBox(height: 12),
+              Container(
+                padding: const EdgeInsets.all(14),
+                decoration: BoxDecoration(
+                  color: AppColors.surface,
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Puntos seguros en tu camino '
+                      '(${(_ruta!['puntos_interes'] as List).length})',
+                      style: const TextStyle(color: AppColors.textSecondary, fontSize: 12),
+                    ),
+                    const SizedBox(height: 8),
+                    Wrap(
+                      spacing: 6,
+                      runSpacing: 6,
+                      children: (_ruta!['puntos_interes'] as List<dynamic>).map((p) {
+                        final tipo = '${p['tipo']}';
+                        final icono = tipo == 'farmacia'
+                            ? Icons.local_pharmacy
+                            : tipo == 'gasolinera'
+                                ? Icons.local_gas_station
+                                : Icons.storefront;
+                        return Chip(
+                          avatar: Icon(icono, size: 14, color: AppColors.textPrimary),
+                          label: Text('${p['nombre']}', style: const TextStyle(fontSize: 11)),
+                          backgroundColor: AppColors.surfaceLight,
+                          visualDensity: VisualDensity.compact,
+                          materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                        );
+                      }).toList(),
+                    ),
+                  ],
+                ),
+              ),
+            ],
             const SizedBox(height: 14),
             OutlinedButton(
-              onPressed: () {},
+              onPressed: (_ruta?['hay_alternativa'] == true && !_cargandoAlternativa)
+                  ? _verRutaAlternativa
+                  : null,
               style: OutlinedButton.styleFrom(
                 minimumSize: const Size.fromHeight(52),
                 foregroundColor: AppColors.textPrimary,
                 side: const BorderSide(color: AppColors.surfaceLight),
                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
               ),
-              child: const Text('Ver ruta alternativa'),
+              child: _cargandoAlternativa
+                  ? const SizedBox(
+                      height: 18,
+                      width: 18,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  : Text(_ruta?['hay_alternativa'] == true
+                      ? 'Ver ruta alternativa'
+                      : 'No hay ruta alternativa para este trayecto'),
             ),
           ] else
             const Padding(
@@ -333,6 +719,81 @@ class _SafeRouteScreenState extends State<SafeRouteScreen> {
             ),
         ],
       ),
+    );
+  }
+
+  /// Campo de texto + lista de sugerencias tipo DiDi/Uber que aparece
+  /// debajo mientras tecleas (con debounce, ver _onOrigenChanged /
+  /// _onDestinoChanged).
+  Widget _campoDireccion({
+    required TextEditingController controller,
+    required String hint,
+    required IconData icono,
+    required Color colorIcono,
+    required ValueChanged<String> onChanged,
+    required List<({String nombre, double lat, double lon})> sugerencias,
+    required ValueChanged<({String nombre, double lat, double lon})> onElegir,
+    required VoidCallback onElegirEnMapa,
+  }) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        TextField(
+          controller: controller,
+          onChanged: onChanged,
+          style: const TextStyle(color: AppColors.textPrimary),
+          decoration: InputDecoration(
+            hintText: hint,
+            prefixIcon: Icon(icono, color: colorIcono),
+          ),
+        ),
+        Align(
+          alignment: Alignment.centerRight,
+          child: TextButton.icon(
+            onPressed: onElegirEnMapa,
+            icon: const Icon(Icons.map_outlined, size: 16),
+            label: const Text('No aparece — marcar en el mapa', style: TextStyle(fontSize: 12)),
+            style: TextButton.styleFrom(
+              foregroundColor: AppColors.textSecondary,
+              padding: const EdgeInsets.symmetric(horizontal: 4),
+              minimumSize: Size.zero,
+              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+            ),
+          ),
+        ),
+        if (sugerencias.isNotEmpty)
+          Container(
+            margin: const EdgeInsets.only(top: 4),
+            constraints: const BoxConstraints(maxHeight: 220),
+            decoration: BoxDecoration(
+              color: AppColors.surface,
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: AppColors.surfaceLight),
+            ),
+            child: ListView.separated(
+              shrinkWrap: true,
+              padding: const EdgeInsets.symmetric(vertical: 4),
+              itemCount: sugerencias.length,
+              separatorBuilder: (_, __) =>
+                  const Divider(height: 1, color: AppColors.surfaceLight),
+              itemBuilder: (_, i) {
+                final s = sugerencias[i];
+                return ListTile(
+                  dense: true,
+                  leading: const Icon(Icons.location_on_outlined,
+                      size: 18, color: AppColors.textSecondary),
+                  title: Text(
+                    s.nombre,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(color: AppColors.textPrimary, fontSize: 13),
+                  ),
+                  onTap: () => onElegir(s),
+                );
+              },
+            ),
+          ),
+      ],
     );
   }
 
