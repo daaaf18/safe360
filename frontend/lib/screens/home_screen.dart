@@ -5,9 +5,13 @@ import 'package:http/http.dart' as http;
 import '../config.dart';
 import '../theme.dart';
 import '../widgets/safe360_map.dart';
+import '../services/auth_service.dart';
+import '../services/location_service.dart';
 import 'sos_screen.dart';
 import 'report_screen.dart';
 import 'safe_route_screen.dart';
+import 'login_screen.dart';
+import 'profile_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -19,7 +23,18 @@ class HomeScreen extends StatefulWidget {
 class _HomeScreenState extends State<HomeScreen> {
   // baseUrl centralizado en config.dart
 
+  // `_reportes`: TODOS los que caben en la página (para pintar el mapa —
+  // pines y mancha de calor de Puebla completa, no solo tu alrededor).
+  // `_reportesCerca`: filtrados de verdad por distancia real a tu GPS —
+  // esto es lo que alimenta "X reportes cerca", "Tu zona" y los chips de
+  // "Incidentes cerca de ti". Antes las tres cosas usaban `_reportes` sin
+  // ningún filtro de ubicación — decían "cerca" pero en realidad eran
+  // nada más los primeros 20 reportes de toda la base de datos (el límite
+  // por defecto del backend), viniera de donde viniera el usuario.
   List<dynamic> _reportes = [];
+  List<dynamic> _reportesCerca = [];
+  static const double _radioCercaMetros = 1500;
+
   String _nivelZona = 'Cargando...';
   Color _colorZona = AppColors.textSecondary;
   double _scoreZona = 0.0;
@@ -36,35 +51,67 @@ class _HomeScreenState extends State<HomeScreen> {
       final token = prefs.getString('token');
       if (token == null) return;
 
-      final response = await http.get(
-        Uri.parse('${ApiConfig.baseUrl}/reportes'),
-        headers: {'Authorization': 'Bearer $token'},
-      );
+      final ubicacion = await LocationService.obtenerUbicacionActual();
 
-      if (response.statusCode == 200) {
-        final data = jsonDecode(response.body);
-        final reportes = data is List ? data : (data['reportes'] ?? []);
-
-        // Calcular nivel de zona según reportes activos
-        final verificados = reportes.where((r) => r['estado'] == 'verificado').length;
-        final total = reportes.length;
-        final score = total == 0 ? 10.0 : ((total - verificados) / total * 10).clamp(0.0, 10.0);
-
-        setState(() {
-          _reportes = reportes;
-          _scoreZona = score;
-          if (score >= 7) {
-            _nivelZona = 'Zona segura ahora';
-            _colorZona = AppColors.safe;
-          } else if (score >= 4) {
-            _nivelZona = 'Zona de riesgo medio';
-            _colorZona = AppColors.warning;
-          } else {
-            _nivelZona = 'Zona de alto riesgo';
-            _colorZona = AppColors.danger;
-          }
-        });
+      final peticiones = <Future<http.Response>>[
+        http.get(
+          Uri.parse('${ApiConfig.baseUrl}/reportes?limite=100'),
+          headers: {'Authorization': 'Bearer $token'},
+        ),
+      ];
+      if (ubicacion.exito) {
+        peticiones.add(http.get(
+          Uri.parse('${ApiConfig.baseUrl}/reportes').replace(queryParameters: {
+            'latitud': '${ubicacion.posicion!.latitude}',
+            'longitud': '${ubicacion.posicion!.longitude}',
+            'radio': '$_radioCercaMetros',
+            'limite': '100',
+          }),
+          headers: {'Authorization': 'Bearer $token'},
+        ));
       }
+
+      final respuestas = await Future.wait(peticiones);
+
+      List<dynamic> reportes = [];
+      if (respuestas[0].statusCode == 200) {
+        final data = jsonDecode(respuestas[0].body);
+        reportes = data is List ? data : (data['reportes'] ?? []);
+      }
+
+      // Si no se pudo obtener el GPS, mejor no fingir un "cerca" que en
+      // realidad no lo es — se queda vacío (la UI ya oculta esas
+      // secciones cuando la lista está vacía) en vez de mostrar de nuevo
+      // reportes de cualquier parte de la ciudad como si fueran locales.
+      List<dynamic> reportesCerca = [];
+      if (ubicacion.exito && respuestas.length > 1 && respuestas[1].statusCode == 200) {
+        final data = jsonDecode(respuestas[1].body);
+        reportesCerca = data is List ? data : (data['reportes'] ?? []);
+      }
+
+      // Calcular nivel de zona según los reportes DE VERDAD cerca de ti.
+      final verificados = reportesCerca.where((r) => r['estado'] == 'verificado').length;
+      final total = reportesCerca.length;
+      final score = total == 0 ? 10.0 : ((total - verificados) / total * 10).clamp(0.0, 10.0);
+
+      setState(() {
+        _reportes = reportes;
+        _reportesCerca = reportesCerca;
+        _scoreZona = score;
+        if (!ubicacion.exito) {
+          _nivelZona = 'Activa el GPS para ver tu zona';
+          _colorZona = AppColors.textSecondary;
+        } else if (score >= 7) {
+          _nivelZona = 'Zona segura ahora';
+          _colorZona = AppColors.safe;
+        } else if (score >= 4) {
+          _nivelZona = 'Zona de riesgo medio';
+          _colorZona = AppColors.warning;
+        } else {
+          _nivelZona = 'Zona de alto riesgo';
+          _colorZona = AppColors.danger;
+        }
+      });
     } catch (e) {
       setState(() {
         _nivelZona = 'Sin conexión';
@@ -88,7 +135,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
   Map<String, int> get _conteoPorCategoria {
     final Map<String, int> conteo = {};
-    for (final r in _reportes) {
+    for (final r in _reportesCerca) {
       final cat = (r['categoria'] ?? 'Otro').toString();
       conteo[cat] = (conteo[cat] ?? 0) + 1;
     }
@@ -117,9 +164,40 @@ class _HomeScreenState extends State<HomeScreen> {
                   ),
                 ),
                 const Spacer(),
-                const Icon(Icons.notifications_none, color: AppColors.textPrimary),
-                const SizedBox(width: 16),
-                const Icon(Icons.more_vert, color: AppColors.textPrimary),
+                // Antes había una campanita de notificaciones decorativa
+                // sin ninguna función real detrás (no hay sistema de
+                // notificaciones push todavía — sería una función aparte,
+                // bastante más grande). La quitamos para no confundir con
+                // un botón muerto; este menú sí hace algo de verdad.
+                PopupMenuButton<String>(
+                  icon: const Icon(Icons.more_vert, color: AppColors.textPrimary),
+                  color: AppColors.surface,
+                  onSelected: (valor) async {
+                    if (valor == 'perfil') {
+                      Navigator.of(context).push(
+                        MaterialPageRoute(builder: (_) => const ProfileScreen()),
+                      );
+                    } else if (valor == 'cerrar_sesion') {
+                      await AuthService.logout();
+                      if (context.mounted) {
+                        Navigator.of(context).pushAndRemoveUntil(
+                          MaterialPageRoute(builder: (_) => const LoginScreen()),
+                          (route) => false,
+                        );
+                      }
+                    }
+                  },
+                  itemBuilder: (context) => const [
+                    PopupMenuItem(
+                      value: 'perfil',
+                      child: Text('Mi perfil', style: TextStyle(color: AppColors.textPrimary)),
+                    ),
+                    PopupMenuItem(
+                      value: 'cerrar_sesion',
+                      child: Text('Cerrar sesión', style: TextStyle(color: AppColors.danger)),
+                    ),
+                  ],
+                ),
               ],
             ),
           ),
@@ -127,7 +205,7 @@ class _HomeScreenState extends State<HomeScreen> {
           Expanded(
             child: Stack(
               children: [
-                Safe360Map(reportes: _reportes),
+                Safe360Map(reportes: _reportes, showHeatmap: true),
                 Positioned(
                   top: 12,
                   left: 12,
@@ -197,7 +275,7 @@ class _HomeScreenState extends State<HomeScreen> {
                     ),
                   ),
                 ),
-                if (_reportes.isNotEmpty)
+                if (_reportesCerca.isNotEmpty)
                   Positioned(
                     left: 12,
                     right: 96,
@@ -215,7 +293,8 @@ class _HomeScreenState extends State<HomeScreen> {
                           const SizedBox(width: 8),
                           Expanded(
                             child: Text(
-                              '${_reportes.length} reporte${_reportes.length != 1 ? 's' : ''} cerca',
+                              '${_reportesCerca.length} reporte${_reportesCerca.length != 1 ? 's' : ''} '
+                              'a menos de ${(_radioCercaMetros / 1000).toStringAsFixed(1)} km',
                               style: const TextStyle(color: AppColors.textPrimary, fontSize: 13),
                             ),
                           ),
@@ -305,7 +384,7 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Widget _quickAction(BuildContext context, IconData icon, String title, String subtitle,
-      VoidCallback onTap) {
+      VoidCallback onTap, {Color color = AppColors.safe}) {
     return InkWell(
       onTap: onTap,
       borderRadius: BorderRadius.circular(14),
@@ -314,10 +393,11 @@ class _HomeScreenState extends State<HomeScreen> {
         decoration: BoxDecoration(
           color: AppColors.surfaceLight,
           borderRadius: BorderRadius.circular(14),
+          border: Border.all(color: color.withOpacity(0.35)),
         ),
         child: Row(
           children: [
-            Icon(icon, color: AppColors.safe, size: 20),
+            Icon(icon, color: color, size: 20),
             const SizedBox(width: 8),
             Expanded(
               child: Column(
