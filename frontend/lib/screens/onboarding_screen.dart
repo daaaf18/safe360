@@ -30,6 +30,16 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
       descripcion: 'Si dices "auxilio" o "ayuda", activo el SOS al instante y alerto a tus contactos de confianza.',
     ),
     _OnboardingPage(
+      imagen: 'assets/chaty/chaty_neutral.png',
+      titulo: 'Te acompaño en el viaje',
+      descripcion: 'Dime "voy en Uber/taxi a..." y monitoreo tu trayecto — si detecto un desvío raro y no respondes, activo el SOS por ti sola.',
+    ),
+    _OnboardingPage(
+      imagen: 'assets/chaty/chaty_escuchando.png',
+      titulo: '¿Qué tan segura es tu zona?',
+      descripcion: 'Pregúntame en cualquier momento y reviso tu ubicación real: reportes cercanos, luminarias fundidas, y qué tan riesgosa es la hora.',
+    ),
+    _OnboardingPage(
       imagen: 'assets/chaty/chaty_feliz.png',
       titulo: '¡Empecemos!',
       descripcion: 'Safe360 cruza datos reales de iluminación, reportes ciudadanos e IA para que siempre llegues segura.',
