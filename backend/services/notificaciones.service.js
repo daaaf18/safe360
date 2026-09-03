@@ -1,14 +1,13 @@
 const pool = require('../models/db');
 const { enviarMensaje, estaListo } = require('./whatsapp.service');
 
-// Detectar usuarios con rutas activas afectadas por un nuevo reporte
-// y notificarles por WhatsApp
+// Detectar usuarios con rutas activas afectadas por un nuevo reporte y
+// avisarles — por WhatsApp a sus contactos de confianza (como ya hacía) Y
+// como alerta dentro de la app (Chaty la muestra al usuario mismo, ver
+// GET /rutas/alertas). Esto último no depende de que WhatsApp esté
+// conectado, así que se separó del chequeo estaListo() que antes hacía
+// que TODO el aviso se saltara si WhatsApp no estaba listo.
 const notificarRutasAfectadas = async (reporte) => {
-  if (!estaListo()) {
-    console.log('WhatsApp no disponible, omitiendo notificaciones');
-    return;
-  }
-
   try {
     // Buscar rutas activas que pasen cerca del reporte (radio 300m)
     const rutasAfectadas = await pool.query(
@@ -28,22 +27,32 @@ const notificarRutasAfectadas = async (reporte) => {
 
     if (rutasAfectadas.rows.length === 0) return;
 
-    // Agrupar por usuario para no mandar mensajes duplicados
+    // Agrupar por usuario para no duplicar la alerta ni el WhatsApp
     const usuariosNotificados = new Set();
 
     for (const fila of rutasAfectadas.rows) {
       if (usuariosNotificados.has(fila.usuario_id)) continue;
       usuariosNotificados.add(fila.usuario_id);
 
-      // Notificar al usuario directamente si tiene teléfono
-      // (por ahora notificamos a sus contactos de confianza)
-      if (fila.telefono) {
-        const mensaje = `⚠️ *Alerta Safe360*\n\n` +
+      // ── Alerta dentro de la app (Chaty) — para el usuario mismo ──
+      const mensajeApp = `⚠️ Se reportó un incidente de *${reporte.categoria}* cerca de tu ruta activa. Mantente alerta.`;
+      try {
+        await pool.query(
+          `INSERT INTO alertas_ruta (usuario_id, mensaje, categoria) VALUES ($1, $2, $3)`,
+          [fila.usuario_id, mensajeApp, reporte.categoria]
+        );
+      } catch (error) {
+        console.error('Error guardando alerta en app:', error.message);
+      }
+
+      // ── WhatsApp a su contacto de confianza (ya existía) ──
+      if (fila.telefono && estaListo()) {
+        const mensajeWhatsapp = `⚠️ *Alerta Safe360*\n\n` +
           `Nuevo reporte de *${reporte.categoria}* detectado cerca de la ruta activa de *${fila.nombre}*.\n\n` +
           `Mantente en contacto con ellos. Si no responden, considera verificar su situación.\n\n` +
           `_Safe360 — Navegación Urbana Segura_`;
 
-        await enviarMensaje(fila.telefono, mensaje);
+        await enviarMensaje(fila.telefono, mensajeWhatsapp);
         console.log(`Notificación enviada al contacto de ${fila.nombre}`);
       }
     }

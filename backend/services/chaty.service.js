@@ -1,8 +1,15 @@
 const { GoogleGenerativeAI } = require('@google/generative-ai');
+const pool = require('../models/db');
 require('dotenv').config();
 
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
 const model = genAI.getGenerativeModel({ model: 'gemini-3.6-flash' });
+// Respaldo cuando gemini-3.6-flash está saturado (confirmado con 503
+// "high demand" repetidos) — un modelo más ligero, con menos demanda,
+// para intentar una respuesta real de IA antes de caer al respaldo por
+// palabras clave (que entiende mucho menos). Probado en vivo: mientras
+// 3.6-flash fallaba seguido, este respondió bien 3/3 veces.
+const modelRespaldo = genAI.getGenerativeModel({ model: 'gemini-3.1-flash-lite' });
 
 // ── Palabras clave de emergencia — detección inmediata sin Gemini ──
 const PALABRAS_EMERGENCIA = [
@@ -25,6 +32,64 @@ const esEmergencia = (mensaje) => {
 const esModoTransporte = (mensaje) => {
   const lower = mensaje.toLowerCase();
   return PALABRAS_TRANSPORTE.some(p => lower.includes(p));
+};
+
+// ── Palabras clave de "llegué" — finaliza el viaje sin que el usuario
+// tenga que tocar el botón "Finalizar viaje" ──
+const PALABRAS_LLEGADA = [
+  'ya llegué', 'ya llegue', 'llegué', 'llegue a mi destino', 'ya estoy aquí',
+  'ya estoy aqui', 'finalizar viaje', 'terminar viaje', 'terminé el viaje',
+  'termine el viaje', 'ya llegue bien', 'ya llegué bien',
+];
+const esLlegada = (mensaje) => {
+  const lower = mensaje.toLowerCase();
+  return PALABRAS_LLEGADA.some(p => lower.includes(p));
+};
+
+// ── Respaldo sin Gemini — por palabras clave ──────────────────────────
+// Gemini (gemini-3.6-flash) confirmado con caídas intermitentes de "alta
+// demanda" (503) que antes dejaban a Chaty mudo por completo ("no pude
+// procesar tu mensaje" sin ninguna acción). Esto cubre las intenciones más
+// comunes con reglas simples para que Chaty siga siendo útil mientras
+// Gemini no responde — no entiende tan bien como el modelo, pero al menos
+// reacciona a lo básico en vez de fallar siempre.
+const PALABRAS_RUTA = ['ruta', 'ir a', 'cómo llego', 'como llego', 'llevame', 'llévame', 'quiero ir'];
+const PALABRAS_REPORTE = ['reportar', 'reporte', 'vi algo', 'hay un'];
+const PALABRAS_ZONA = ['zona', 'qué tan seguro', 'que tan seguro', 'es seguro aquí', 'es seguro aqui', 'riesgo de'];
+
+const respuestaSinGemini = (mensaje) => {
+  const lower = mensaje.toLowerCase();
+
+  if (esModoTransporte(mensaje)) {
+    return {
+      accion: 'modo_transporte',
+      mensaje: 'Va, ¿a dónde te llevan? Dime el destino para monitorear tu viaje.',
+    };
+  }
+  if (PALABRAS_RUTA.some(p => lower.includes(p))) {
+    return {
+      accion: 'calcular_ruta',
+      mensaje: '¿A dónde quieres ir? Dime el destino y te calculo la ruta más segura.',
+    };
+  }
+  if (PALABRAS_REPORTE.some(p => lower.includes(p))) {
+    return {
+      accion: 'abrir_reporte',
+      mensaje: 'Te abro el formulario de reporte para que cuentes lo que viste.',
+    };
+  }
+  if (PALABRAS_ZONA.some(p => lower.includes(p))) {
+    return {
+      accion: 'consultar_zona',
+      mensaje: 'Revisando el nivel de riesgo de tu zona actual.',
+    };
+  }
+  return {
+    accion: 'responder',
+    mensaje: 'Ahorita estoy medio lenta (mucha demanda del lado de Google 😅), pero '
+      + 'sigo aquí. Puedo calcular una ruta segura, activar el SOS, revisar el '
+      + 'riesgo de tu zona o abrir un reporte — dime cuál.',
+  };
 };
 
 const horaActual = () => new Date().getHours();
@@ -67,6 +132,34 @@ const procesarMensaje = async (mensaje, contexto = {}) => {
       };
     }
 
+    // ── 1b. "Ya llegué" — finaliza el viaje/ruta activa sin que el
+    // usuario tenga que tocar el botón. Solo dispara si de verdad hay
+    // algo activo en rutas_activas (modo transporte o ruta segura) — si
+    // no, "ya llegué a mi casa" en charla normal no debe hacer nada raro.
+    if (esLlegada(mensaje) && contexto.usuario_id) {
+      try {
+        const activo = await pool.query(
+          'SELECT 1 FROM rutas_activas WHERE usuario_id = $1 AND activa = TRUE',
+          [contexto.usuario_id]
+        );
+        if (activo.rows.length > 0) {
+          return {
+            success: true,
+            accion: 'finalizar_viaje',
+            destino: null,
+            mensaje: '✅ Qué bueno que llegaste bien. Dejo de monitorear tu viaje.',
+            perfil_riesgo: 'normal',
+            tipo_transporte: null,
+            emergencia_inmediata: false,
+          };
+        }
+      } catch (error) {
+        console.error('Error revisando ruta activa para "llegué":', error.message);
+        // Si falla la consulta, seguimos con el flujo normal (Gemini/
+        // respaldo) en vez de tronar el mensaje completo.
+      }
+    }
+
     // ── 2. Construir contexto para Gemini ──
     const hora = horaActual();
     const contextoHorario = esNocturno()
@@ -92,7 +185,28 @@ ${esModoTransporte(mensaje) ? 'NOTA: El usuario menciona transporte. Activa modo
 
 Responde SOLO con el JSON, sin markdown ni texto adicional.`;
 
-    const result = await model.generateContent(prompt);
+    // Sin timeout, si Gemini está lento o con alta demanda (pasa,
+    // confirmado: el modelo llegó a tardar 30+ segundos y devolver 503),
+    // el mensaje del usuario se queda esperando indefinidamente sin
+    // ninguna respuesta ni error — cae al catch de abajo en vez de
+    // colgar la conversación.
+    const generarConTimeout = (modeloUsar, timeoutMs) => Promise.race([
+      modeloUsar.generateContent(prompt),
+      new Promise((_, reject) =>
+        setTimeout(() => reject(new Error('Gemini tardó demasiado en responder')), timeoutMs)
+      ),
+    ]);
+
+    let result;
+    try {
+      result = await generarConTimeout(model, 12_000);
+    } catch (errorPrimario) {
+      // gemini-3.6-flash saturado/lento — un intento con el modelo de
+      // respaldo antes de rendirse al respaldo por palabras clave (que
+      // entiende mucho menos que una respuesta real de IA).
+      console.error('gemini-3.6-flash falló, reintentando con modelo de respaldo:', errorPrimario.message);
+      result = await generarConTimeout(modelRespaldo, 10_000);
+    }
     const responseText = result.response.text().trim();
     const clean = responseText.replace(/```json|```/g, '').trim();
     const parsed = JSON.parse(clean);
@@ -118,11 +232,17 @@ Responde SOLO con el JSON, sin markdown ni texto adicional.`;
 
   } catch (error) {
     console.error('Error en Chaty:', error.message);
+    // Antes esto siempre regresaba "no pude procesar tu mensaje" sin
+    // ninguna acción — con Gemini cayéndose por alta demanda, Chaty se
+    // quedaba mudo justo cuando más se necesitaba. respuestaSinGemini()
+    // cubre las intenciones comunes por palabras clave para que la
+    // conversación pueda seguir aunque Gemini no responda.
+    const fallback = respuestaSinGemini(mensaje);
     return {
-      success: false,
-      accion: 'responder',
+      success: true,
+      accion: fallback.accion,
       destino: null,
-      mensaje: 'Lo siento, no pude procesar tu mensaje. ¿Puedes repetirlo?',
+      mensaje: fallback.mensaje,
       perfil_riesgo: 'normal',
       tipo_transporte: null,
       emergencia_inmediata: false,
