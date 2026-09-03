@@ -1,5 +1,6 @@
 const pool = require('../models/db');
 const { notificarRutasAfectadas } = require('../services/notificaciones.service');
+const { validarEvidencia } = require('../services/vision.service');
 
 // POST /reportes — Crear reporte
 const crearReporte = async (req, res) => {
@@ -7,6 +8,19 @@ const crearReporte = async (req, res) => {
   const usuario_id = req.usuario.id;
 
   try {
+    // Validar con Gemini Vision antes de publicar: si la foto no muestra
+    // evidencia real de un incidente, se rechaza aquí y nunca llega a
+    // insertarse en la tabla de reportes.
+    if (evidencia_url) {
+      const { valida, razon } = await validarEvidencia(evidencia_url, categoria);
+      if (!valida) {
+        return res.status(400).json({
+          error: `La evidencia no parece mostrar un incidente real${razon ? `: ${razon}` : ''}. `
+            + 'Sube una foto que muestre claramente la situación que estás reportando.',
+        });
+      }
+    }
+
     const resultado = await pool.query(
       `INSERT INTO reportes (usuario_id, categoria, descripcion, evidencia_url, geom)
        VALUES ($1, $2, $3, $4, ST_SetSRID(ST_MakePoint($5, $6), 4326))
@@ -30,8 +44,11 @@ const crearReporte = async (req, res) => {
 };
 
 // GET /reportes — Listar reportes con paginación
+// Sin usuario_id: todos los reportes (para el mapa/heatmap comunitario).
+// Con usuario_id: solo los de ese usuario (para "Mis reportes" en Perfil —
+// antes esa pantalla no filtraba y mostraba los reportes de TODOS).
 const getReportes = async (req, res) => {
-  const { categoria, latitud, longitud, radio } = req.query;
+  const { categoria, latitud, longitud, radio, usuario_id } = req.query;
   const limite = Math.min(parseInt(req.query.limite) || 20, 100);
   const pagina = Math.max(parseInt(req.query.pagina) || 1, 1);
   const offset = (pagina - 1) * limite;
@@ -41,6 +58,11 @@ const getReportes = async (req, res) => {
                  ST_X(geom) as longitud, ST_Y(geom) as latitud,
                  trust_score, estado, created_at FROM reportes WHERE 1=1`;
     const params = [];
+
+    if (usuario_id) {
+      params.push(usuario_id);
+      query += ` AND usuario_id = $${params.length}`;
+    }
 
     if (categoria) {
       params.push(categoria);

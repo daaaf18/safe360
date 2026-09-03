@@ -15,6 +15,19 @@ const zonasRoutes = require('./routes/zonas.routes');
 const chatyRoutes = require('./routes/chaty.routes');
 const transporteRoutes = require('./routes/transporte.routes');
 
+// ── Red de seguridad global ───────────────────────────────
+// whatsapp-web.js a veces truena con errores no capturados en su propia
+// limpieza interna (ej. en Windows, "EBUSY: resource busy or locked" al
+// intentar borrar un archivo temporal de Chromium todavía en uso) —
+// sin esto, esa excepción tumbaba TODO el servidor: login, SOS, reportes,
+// todo, no solo WhatsApp. Lo registramos y seguimos vivos.
+process.on('uncaughtException', (err) => {
+  console.error('⚠️  Excepción no capturada (el servidor sigue corriendo):', err.message);
+});
+process.on('unhandledRejection', (reason) => {
+  console.error('⚠️  Promesa rechazada sin capturar (el servidor sigue corriendo):', reason);
+});
+
 const app = express();
 
 // ── CORS restrictivo ──────────────────────────────────────
@@ -50,6 +63,12 @@ const limiterSOS = rateLimit({
 
 app.use(limiterGeneral);
 
+// ── Log de peticiones (para diagnóstico — no había ninguno) ──
+app.use((req, res, next) => {
+  console.log(`${new Date().toISOString()} ${req.method} ${req.originalUrl} desde ${req.ip}`);
+  next();
+});
+
 // ── Middlewares globales ──────────────────────────────────
 app.use(express.json());
 app.use('/uploads', express.static('uploads'));
@@ -72,6 +91,15 @@ app.get('/qr', async (req, res) => {
   const qrImage = await getQRImage();
   if (!qrImage) return res.json({ message: 'WhatsApp ya está conectado o QR no disponible' });
   res.send(`<html><body style="background:#000;display:flex;justify-content:center;align-items:center;height:100vh"><img src="${qrImage}" style="width:300px"/></body></html>`);
+});
+
+// Diagnóstico rápido: antes no había forma de saber desde afuera si
+// WhatsApp de verdad ya terminó de reconectar tras un reinicio del server
+// (el endpoint /qr solo dice "sin QR", que es ambiguo entre "ya conectado"
+// y "todavía cargando").
+app.get('/whatsapp/estado', (req, res) => {
+  const { estaListo } = require('./services/whatsapp.service');
+  res.json({ conectado: estaListo() });
 });
 
 // ── Ruta de prueba ────────────────────────────────────────

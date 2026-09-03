@@ -1,7 +1,7 @@
 const fs = require('fs');
 const path = require('path');
 const { Pool } = require('pg');
-require('dotenv').config({ path: path.join(__dirname, '../.env') });
+require('dotenv').config({ path: path.join(__dirname, '../backend/.env') });
 
 const pool = new Pool({
   host: process.env.DB_HOST,

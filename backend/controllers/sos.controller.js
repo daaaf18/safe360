@@ -146,4 +146,66 @@ const activarSOS = async (req, res) => {
   }
 };
 
-module.exports = { activarSOS };
+// PUT /sos/ubicacion — Actualización periódica de ubicación mientras una
+// alerta sigue activa. A diferencia de activarSOS, NO manda el mensaje
+// completo de alerta (eso ya lo recibieron los contactos una vez) ni
+// re-evalúa SOS masivo — solo un mensaje corto con la ubicación nueva, para
+// dar seguimiento sin saturar el WhatsApp de los contactos.
+const actualizarUbicacionSOS = async (req, res) => {
+  const { latitud, longitud } = req.body;
+  const usuario_id = req.usuario.id;
+
+  try {
+    const usuarioResult = await pool.query(
+      'SELECT nombre FROM usuarios WHERE id = $1',
+      [usuario_id]
+    );
+
+    if (usuarioResult.rows.length === 0) {
+      return res.status(404).json({ error: 'Usuario no encontrado' });
+    }
+
+    const nombreUsuario = usuarioResult.rows[0].nombre;
+
+    // Guardamos la ubicación más reciente del usuario (mismo campo que usa
+    // PUT /users/:id/ubicacion).
+    await pool.query(
+      'UPDATE usuarios SET ubicacion_actual = ST_SetSRID(ST_MakePoint($1, $2), 4326) WHERE id = $3',
+      [longitud, latitud, usuario_id]
+    );
+
+    const contactosResult = await pool.query(
+      'SELECT nombre, telefono FROM contactos_confianza WHERE usuario_id = $1',
+      [usuario_id]
+    );
+    const contactos = contactosResult.rows;
+
+    const googleMapsLink = `https://maps.google.com/?q=${latitud},${longitud}`;
+    const mensaje = `📍 *Actualización de ubicación — Safe360*\n\n` +
+      `*${nombreUsuario}* sigue con la alerta activa.\n\n` +
+      `Ubicación actual:\n${googleMapsLink}\n\n` +
+      `_Safe360 — Seguimiento de emergencia_`;
+
+    const resultados = [];
+    if (estaListo()) {
+      for (const contacto of contactos) {
+        const enviado = await enviarMensaje(contacto.telefono, mensaje);
+        resultados.push({ contacto: contacto.nombre, enviado });
+      }
+    }
+
+    const exitosos = resultados.filter(r => r.enviado).length;
+
+    res.json({
+      message: `Ubicación actualizada. ${exitosos} de ${contactos.length} contacto(s) notificados.`,
+      whatsappActivo: estaListo(),
+      resultados,
+    });
+
+  } catch (error) {
+    console.error('Error en actualizarUbicacionSOS:', error.message);
+    res.status(500).json({ error: 'Error interno del servidor' });
+  }
+};
+
+module.exports = { activarSOS, actualizarUbicacionSOS };

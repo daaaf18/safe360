@@ -20,6 +20,9 @@ router.get('/:id/contactos', verificarToken, usersController.getContactos);
 // GET /users/:id/stats — Estadísticas y TrustScore personal
 router.get('/:id/stats', verificarToken, getStats);
 
+// GET /users/:id/rutas — Rutas frecuentes (últimas 3, con detección de uso repetido)
+router.get('/:id/rutas', verificarToken, usersController.getRutas);
+
 // POST /users/:id/contactos — Agregar contacto de confianza
 router.post('/:id/contactos', verificarToken, validarContacto, manejarErrores, usersController.agregarContacto);
 

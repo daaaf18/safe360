@@ -139,6 +139,56 @@ const eliminarContacto = async (req, res) => {
   }
 };
 
+// GET /users/:id/rutas — Rutas frecuentes para Perfil.
+//
+// Regresa las últimas 3 rutas que calculó el usuario, cada una con
+// `veces_usada` (cuántas veces ha calculado ese mismo origen-destino,
+// dentro de 200 m) y `es_frecuente` cuando eso llega a 3+ — así el
+// front puede mostrarlas como tarjetas reactivables con un toque, sin
+// tener que volver a escribir origen/destino.
+const getRutas = async (req, res) => {
+  const { id } = req.params;
+
+  try {
+    const resultado = await pool.query(
+      `SELECT r.id,
+        ST_Y(r.origen) as origen_lat, ST_X(r.origen) as origen_lon,
+        ST_Y(r.destino) as destino_lat, ST_X(r.destino) as destino_lon,
+        r.trust_score_promedio, r.distancia_metros, r.nivel_riesgo,
+        r.puntos, r.ruteo_real, r.created_at,
+        (SELECT COUNT(*) FROM rutas r2
+         WHERE r2.usuario_id = r.usuario_id
+         AND ST_DWithin(r2.origen::geography, r.origen::geography, 200)
+         AND ST_DWithin(r2.destino::geography, r.destino::geography, 200)
+        ) as veces_usada
+       FROM rutas r
+       WHERE r.usuario_id = $1
+       ORDER BY r.created_at DESC
+       LIMIT 3`,
+      [id]
+    );
+
+    const rutas = resultado.rows.map(r => ({
+      id: r.id,
+      origen: { lat: parseFloat(r.origen_lat), lon: parseFloat(r.origen_lon) },
+      destino: { lat: parseFloat(r.destino_lat), lon: parseFloat(r.destino_lon) },
+      trust_score_promedio: r.trust_score_promedio,
+      distancia_metros: r.distancia_metros,
+      nivel_riesgo: r.nivel_riesgo,
+      puntos: r.puntos, // geometría guardada — reactivar no debe recalcular Directions de nuevo
+      ruteo_real: r.ruteo_real,
+      created_at: r.created_at,
+      veces_usada: parseInt(r.veces_usada),
+      es_frecuente: parseInt(r.veces_usada) >= 3,
+    }));
+
+    res.json(rutas);
+  } catch (error) {
+    console.error('Error en getRutas:', error.message);
+    res.status(500).json({ error: 'Error interno del servidor' });
+  }
+};
+
 module.exports = {
   getPerfil,
   editarPerfil,
@@ -146,5 +196,6 @@ module.exports = {
   getContactos,
   agregarContacto,
   editarContacto,
-  eliminarContacto
+  eliminarContacto,
+  getRutas,
 };
