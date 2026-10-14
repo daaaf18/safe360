@@ -15,7 +15,7 @@ let watchdog = null;
 // puede quedar atorado (Chrome cargando, sin QR, sin error, sin evento
 // alguno) indefinidamente — sin esto, nada lo saca de ese estado más que
 // reiniciar el servidor a mano.
-const TIMEOUT_CONEXION_MS = 90_000;
+const TIMEOUT_CONEXION_MS = 180_000;
 
 // Confirmado en vivo: si Chrome se mata a la fuerza (o `.destroy()` no
 // alcanza a limpiar completo antes del siguiente intento), puede quedar
