@@ -83,6 +83,18 @@ const iniciarWhatsApp = () => {
     ultimoQR = qr;
     console.log('\n📱 Escanea este QR con WhatsApp para conectar Safe360:\n');
     qrcodeTerminal.generate(qr, { small: true });
+    // Reiniciar el watchdog cada vez que llega un QR nuevo — así el tiempo
+    // de 180s se cuenta desde el último QR, no desde que arrancó el servidor.
+    if (watchdog) clearTimeout(watchdog);
+    watchdog = setTimeout(() => {
+      console.log(`⏱️  WhatsApp no llegó a 'ready' en ${TIMEOUT_CONEXION_MS / 1000}s — forzando reintento...`);
+      const clienteAtorado = client;
+      client = null;
+      isReady = false;
+      Promise.resolve(clienteAtorado?.destroy?.()).catch(() => {}).finally(() => {
+        iniciarWhatsApp();
+      });
+    }, TIMEOUT_CONEXION_MS);
   });
 
   client.on('ready', () => {
