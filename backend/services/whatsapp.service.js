@@ -53,7 +53,6 @@ const iniciarWhatsApp = () => {
         '--no-zygote',
         '--disable-gpu',
         '--disable-dbus',
-        '--single-process',
         '--disable-extensions',
         '--disable-default-apps',
         '--disable-background-networking',
