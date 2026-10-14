@@ -27,7 +27,7 @@
 ///       cable/se reinicia adb — no es persistente.
 /// -----------------------------------------------------------------------
 class ApiConfig {
-  static const String baseUrl = 'http://localhost:3000';
+  static const String baseUrl = 'https://safe360-3h7v.onrender.com';
 
   /// Mismo token público que usa el mapa (ver main.dart), reexpuesto aquí
   /// para que cualquier pantalla que necesite pegarle a la API de Mapbox
