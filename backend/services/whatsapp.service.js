@@ -53,6 +53,7 @@ const iniciarWhatsApp = () => {
         '--no-zygote',
         '--disable-gpu',
         '--disable-dbus',
+        '--single-process',
         '--disable-extensions',
         '--disable-default-apps',
         '--disable-background-networking',
@@ -61,7 +62,7 @@ const iniciarWhatsApp = () => {
         '--disable-component-update',
         '--disable-client-side-phishing-detection',
         '--safebrowsing-disable-auto-update',
-        '--js-flags=--max-old-space-size=256',
+        '--js-flags=--max-old-space-size=128',
       ],
     },
   });
