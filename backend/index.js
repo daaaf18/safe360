@@ -30,6 +30,10 @@ process.on('unhandledRejection', (reason) => {
 
 const app = express();
 
+// Render (y cualquier reverse proxy) añade X-Forwarded-For — sin esto,
+// express-rate-limit lanza ValidationError y bloquea TODAS las peticiones.
+app.set('trust proxy', 1);
+
 // ── CORS restrictivo ──────────────────────────────────────
 const corsOptions = {
   origin: [
